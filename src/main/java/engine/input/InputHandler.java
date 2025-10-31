@@ -1,6 +1,7 @@
 package engine.input;
 
 import engine.rendering.Camera;
+import engine.VoxelEngine;
 import engine.physics.PhysicsEngine;
 import org.lwjgl.glfw.GLFW;
 import org.joml.Vector3f;
@@ -11,8 +12,10 @@ public class InputHandler {
     private PhysicsEngine physics;
     private double lastMouseX, lastMouseY;
     private boolean firstMouse = true;
+    private VoxelEngine voxelEngine;
 
-    public InputHandler(long window, Camera camera, PhysicsEngine physics) {
+    public InputHandler(long window, Camera camera, PhysicsEngine physics, VoxelEngine voxelEngine) {
+    	this.voxelEngine = voxelEngine;
         this.window = window;
         this.camera = camera;
         this.physics = physics;
@@ -36,7 +39,10 @@ public class InputHandler {
     }
 
     public void pollEvents(float delta) {
-        float moveSpeed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS ? 0.12f : 0.25f;
+        float runSpeed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS ? 0.35f : 0.25f;
+        float shiftSpeed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS ? 0.12f : 0.25f;
+        
+        float moveSpeed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS ? runSpeed : shiftSpeed;
 
         float yawRad = (float) Math.toRadians(camera.getYaw());
         Vector3f pos = camera.getPosition();
@@ -74,6 +80,11 @@ public class InputHandler {
             if (physics.canMoveToZ(newZ)) {
                 pos.z = newZ;
             }
+        }
+        
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_ESCAPE) == GLFW.GLFW_PRESS) {
+        	voxelEngine.cleanup();
+        	System.exit(0);
         }
     }
 

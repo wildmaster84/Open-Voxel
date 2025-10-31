@@ -4,13 +4,19 @@ import java.io.Serializable;
 
 public class Chunk implements Serializable {
     public static final int SIZE = 16;
-    private final Block[][][] blocks = new Block[SIZE][SIZE][SIZE];
+    public static final int HEIGHT = 512;
+    private int chunkX, chunkZ;
+    private final Block[][][] blocks = new Block[SIZE][HEIGHT][SIZE];
 
-    public Chunk() {
+    
+
+    public Chunk(int chunkX, int chunkZ) {
+    	this.chunkX = chunkX;
+    	this.chunkZ = chunkZ;
         for (int x = 0; x < SIZE; x++)
-            for (int y = 0; y < SIZE; y++)
+            for (int y = 0; y < HEIGHT; y++)
                 for (int z = 0; z < SIZE; z++)
-                    blocks[x][y][z] = new Block(Block.Type.AIR);
+                    blocks[x][y][z] = new Block(BlockType.AIR);
     }
 
     public Block getBlock(int x, int y, int z) {

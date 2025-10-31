@@ -5,6 +5,8 @@ import engine.world.World;
 import engine.input.InputHandler;
 import engine.physics.PhysicsEngine;
 import engine.rendering.Camera;
+
+import org.joml.Vector3f;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.opengl.GL;
@@ -23,6 +25,7 @@ public class VoxelEngine {
     private InputHandler input;
     private PhysicsEngine physics;
     private boolean running = true;
+    private final String version = "Debug v0.0.2";
 
     public void start() {
         initGLFW();
@@ -46,19 +49,23 @@ public class VoxelEngine {
     }
 
     private void initEngine() {
-        camera = new Camera(WIDTH, HEIGHT);
-        world = new World();
+    	world = new World(2025L);
+        camera = new Camera(WIDTH, HEIGHT, 95, 10);
         physics = new PhysicsEngine(world, camera);
-        input = new InputHandler(window, camera, physics);
+        input = new InputHandler(window, camera, physics, this);
         renderer = new Renderer(world, camera);
     }
 
     private void loop() {
         double lastTime = GLFW.glfwGetTime();
+        int frames = 0;
+        double lastFpsTime = lastTime;
         while (!GLFW.glfwWindowShouldClose(window) && running) {
             double now = GLFW.glfwGetTime();
             float delta = (float) (now - lastTime);
             lastTime = now;
+            
+            if (delta > 0.1f) delta = 0.1f;
 
             input.pollEvents(delta);
             physics.update(delta, input.isJumpPressed(), input.isCrouchPressed());
@@ -67,10 +74,19 @@ public class VoxelEngine {
 
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
+            frames++;
+            if (now - lastFpsTime >= 1.0) {
+                Vector3f pos = camera.getPosition();
+                String title = String.format("Open-Voxel Engine - %s | FPS: %d | Pos: (%d, %d, %d)",
+                    version, frames, (int)pos.x, (int)pos.y, (int)pos.z);
+                GLFW.glfwSetWindowTitle(window, title);
+                frames = 0;
+                lastFpsTime = now;
+            }
         }
     }
 
-    private void cleanup() {
+    public void cleanup() {
         renderer.cleanup();
         GLFW.glfwDestroyWindow(window);
         GLFW.glfwTerminate();

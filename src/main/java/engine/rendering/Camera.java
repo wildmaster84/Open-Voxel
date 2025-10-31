@@ -7,15 +7,16 @@ public class Camera {
     private Vector3f position;
     private float pitch, yaw;
     private Matrix4f projection;
-    private final float FOV = 70f;
+    private final float FOV = 71f;
     private final float NEAR = 0.1f;
     private final float FAR = 1000f;
-    private int width, height;
+    private int width, height, renderDistance;
 
-    public Camera(int width, int height) {
+    public Camera(int width, int height, int levelY, int renderDistance) {
         this.width = width;
         this.height = height;
-        position = new Vector3f(8, 24, 30); // Look at terrain from above
+        this.renderDistance = renderDistance;
+        position = new Vector3f(8, levelY, 30); // Look at terrain from above
         pitch = -30;
         yaw = 0;
         projection = new Matrix4f().perspective((float)Math.toRadians(FOV), (float)width/height, NEAR, FAR);
@@ -26,7 +27,7 @@ public class Camera {
         view.identity()
             .rotate((float)Math.toRadians(pitch), new Vector3f(1, 0, 0))
             .rotate((float)Math.toRadians(yaw), new Vector3f(0, 1, 0))
-            .translate(new Vector3f(-position.x, -position.y - 0.5f, -position.z));
+            .translate(new Vector3f(-position.x, -position.y - 1.6f, -position.z));
         return view;
     }
 
@@ -53,4 +54,9 @@ public class Camera {
         this.height = h;
         projection = new Matrix4f().perspective((float)Math.toRadians(FOV), (float)width/height, NEAR, FAR);
     }
+
+	public int getRenderDistance() {
+		// TODO Auto-generated method stub
+		return renderDistance;
+	}
 }
