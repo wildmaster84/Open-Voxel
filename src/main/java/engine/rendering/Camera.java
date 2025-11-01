@@ -7,7 +7,7 @@ public class Camera {
     private Vector3f position;
     private float pitch, yaw;
     private Matrix4f projection;
-    private final float FOV = 70f;
+    private final float FOV = 71f;
     private final float NEAR = 0.1f;
     private final float FAR = 1000f;
     private int width, height, renderDistance;
@@ -27,7 +27,7 @@ public class Camera {
         view.identity()
             .rotate((float)Math.toRadians(pitch), new Vector3f(1, 0, 0))
             .rotate((float)Math.toRadians(yaw), new Vector3f(0, 1, 0))
-            .translate(new Vector3f(-position.x, -position.y - 1.2f, -position.z));
+            .translate(new Vector3f(-position.x, -position.y - 1.6f, -position.z));
         return view;
     }
 
