@@ -10,6 +10,7 @@ import org.lwjgl.opengl.*;
 import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryUtil;
 
+import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
@@ -18,7 +19,6 @@ public class Renderer {
     private World world;
     private Camera camera;
     private ShaderProgram shader;
-    private Map<String, Texture> textures = new HashMap<>();
 
     private int vaoId;
     private int vboId;
@@ -28,17 +28,8 @@ public class Renderer {
         this.camera = camera;
         setupGL();
         setupShaders();
-        loadTextures();
     }
-
-    private void loadTextures() {
-    	// We should do this automatically..
-        textures.put("grass_top.png", new Texture("./resources/textures/grass_top.png"));
-        textures.put("grass_side.png", new Texture("./resources/textures/grass_side.png"));
-        textures.put("dirt.png", new Texture("./resources/textures/dirt.png"));
-        textures.put("stone.png", new Texture("./resources/textures/stone.png"));
-    }
-
+    
     private void setupGL() {
         GL11.glClearColor(0.6f, 0.6f, 0.6f, 1.0f);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
@@ -125,8 +116,7 @@ public class Renderer {
 
                             for (int face = 0; face < 6; face++) {
                                 if (shouldRenderFace(world, cx, cz, x, y, z, FaceDirection.get(face))) {
-                                    String texName = block.getType().getTextureForFace(face);
-                                    Texture texture = textures.get(texName);
+                                    Texture texture = block.getType().getTextureForFace(face);
                                     if (texture != null) {
                                         texture.bind();
                                         int texLoc = GL20.glGetUniformLocation(shader.getProgramId(), "blockTexture");
@@ -184,7 +174,17 @@ public class Renderer {
 
     public void cleanup() {
         shader.delete();
-        for (Texture texture : textures.values()) texture.cleanup();
+        try {
+        	for (BlockType block : BlockType.values()) {
+            	block.back.cleanup();
+            	block.bottom.cleanup();
+            	block.front.cleanup();
+            	block.left.cleanup();
+            	block.right.cleanup();
+            	block.top.cleanup();
+            }
+        } catch(NullPointerException e) {}
+        
         GL15.glDeleteBuffers(vboId);
         GL30.glDeleteVertexArrays(vaoId);
     }
