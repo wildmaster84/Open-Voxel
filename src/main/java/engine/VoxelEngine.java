@@ -49,7 +49,7 @@ public class VoxelEngine {
 
     private void initEngine() {
     	world = new World();
-        camera = new Camera(WIDTH, HEIGHT, 24, 3);
+        camera = new Camera(WIDTH, HEIGHT, 75, 3);
         physics = new PhysicsEngine(world, camera);
         input = new InputHandler(window, camera, physics, this);
         renderer = new Renderer(world, camera);

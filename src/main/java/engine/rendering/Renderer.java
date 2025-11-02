@@ -97,7 +97,7 @@ public class Renderer {
                 Chunk chunk = world.getChunk(cx, cz);
                 if (chunk == null) continue;
                 for (int x = 0; x < Chunk.SIZE; x++) {
-                    for (int y = 0; y < Chunk.SIZE; y++) {
+                    for (int y = 0; y < Chunk.HEIGHT; y++) {
                         for (int z = 0; z < Chunk.SIZE; z++) {
                             Block block = chunk.getBlock(x, y, z);
                             if (block.getType() == null) continue;
@@ -166,7 +166,7 @@ public class Renderer {
 
         Chunk neighborChunk = world.getChunk(neighborChunkX, neighborChunkZ);
 
-        if (neighborChunk == null || localX < 0 || localX >= Chunk.SIZE || localY < 0 || localY >= Chunk.SIZE || localZ < 0 || localZ >= Chunk.SIZE)
+        if (neighborChunk == null || localX < 0 || localX >= Chunk.SIZE || localY < 0 || localY >= Chunk.HEIGHT || localZ < 0 || localZ >= Chunk.SIZE)
             return false; // Out of bounds, treat as AIR
         Block neighbor = neighborChunk.getBlock(localX, localY, localZ);
         return neighbor == null || neighbor.getType() == BlockType.AIR;

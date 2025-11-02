@@ -25,14 +25,24 @@ public class World implements Serializable {
         return chunks.get(getChunkKey(x, z));
     }
 
+    private final PerlinNoise perlin = new PerlinNoise(7483901); // Add this to your World class
+
     private Chunk generateChunk(int cx, int cz) {
         Chunk chunk = new Chunk();
+        int maxHeight = Chunk.HEIGHT - 1;
+        double scale = 0.03;   // Lower = smoother, less repetition
+        double amp = 8.0;     // Controls hill height
+        double base = 64.0;    // Base terrain height
+
         for (int x = 0; x < Chunk.SIZE; x++) {
             for (int z = 0; z < Chunk.SIZE; z++) {
                 int wx = cx * Chunk.SIZE + x;
                 int wz = cz * Chunk.SIZE + z;
-                int height = 8 + (int)(4 * Math.sin(wx * 0.13) + 4 * Math.cos(wz * 0.11));
-                for (int y = 0; y < Chunk.SIZE; y++) {
+                double noiseVal = perlin.noise(wx * scale, wz * scale, 0.0); // [-1,1]
+                int height = (int)(base + noiseVal * amp);
+                height = Math.min(height, maxHeight);
+
+                for (int y = 0; y < Chunk.HEIGHT; y++) {
                     if (y < height - 3) chunk.setBlock(x, y, z, new Block(BlockType.STONE));
                     else if (y < height - 1) chunk.setBlock(x, y, z, new Block(BlockType.DIRT));
                     else if (y == height - 1) chunk.setBlock(x, y, z, new Block(BlockType.GRASS));

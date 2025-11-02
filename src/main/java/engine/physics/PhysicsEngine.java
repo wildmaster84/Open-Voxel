@@ -145,7 +145,7 @@ public class PhysicsEngine {
         int localZ = Math.floorMod(globalZ, Chunk.SIZE);
 
         Chunk chunk = world.getChunk(chunkX, chunkZ);
-        if (chunk == null || localX < 0 || localX >= Chunk.SIZE || localY < 0 || localY >= Chunk.SIZE || localZ < 0 || localZ >= Chunk.SIZE)
+        if (chunk == null || localX < 0 || localX >= Chunk.SIZE || localY < 0 || localY >= Chunk.HEIGHT || localZ < 0 || localZ >= Chunk.SIZE)
             return null;
         return chunk.getBlock(localX, localY, localZ);
     }
