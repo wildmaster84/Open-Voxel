@@ -3,52 +3,69 @@ package engine.world;
 import java.util.Random;
 
 public class PerlinNoise {
-    private final int[] p;
+    private final int[] p = new int[Chunk.HEIGHT];
 
     public PerlinNoise(long seed) {
-        p = new int[Chunk.HEIGHT];
-        int[] permutation = new int[256];
-        Random rand = new Random(seed);
-        for (int i = 0; i < 256; i++) permutation[i] = i;
-        // Shuffle with seed
+        int[] perm = new int[256];
+        for (int i = 0; i < 256; i++) perm[i] = i;
+        Random r = new Random(seed);
+        // Fisher–Yates
         for (int i = 255; i > 0; i--) {
-            int j = rand.nextInt(i + 1);
-            int tmp = permutation[i];
-            permutation[i] = permutation[j];
-            permutation[j] = tmp;
+            int j = r.nextInt(i + 1);
+            int t = perm[i]; perm[i] = perm[j]; perm[j] = t;
         }
-        for (int i = 0; i < 512; i++) p[i] = permutation[i % 256];
+        // duplicate
+        for (int i = 0; i < 512; i++) p[i] = perm[i & 255];
     }
 
-    private static double fade(double t) {
-        return t * t * t * (t * (t * 6 - 15) + 10);
+    private static double fade(double t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+    private static double lerp(double a, double b, double t) { return a + t * (b - a); }
+    private static double grad(int hash, double x, double y) {
+        // 8 gradient directions
+        switch (hash & 7) {
+            case 0: return  x + y;
+            case 1: return  x - y;
+            case 2: return -x + y;
+            case 3: return -x - y;
+            case 4: return  x;
+            case 5: return -x;
+            case 6: return  y;
+            default: return -y;
+        }
     }
-    private static double lerp(double t, double a, double b) {
-        return a + t * (b - a);
+
+    /** Returns noise in [-1, 1] */
+    double noise(double x, double y) {
+        int X = (int)Math.floor(x) & 255;
+        int Y = (int)Math.floor(y) & 255;
+        double xf = x - Math.floor(x);
+        double yf = y - Math.floor(y);
+
+        int aa = p[p[X] + Y];
+        int ab = p[p[X] + Y + 1];
+        int ba = p[p[X + 1] + Y];
+        int bb = p[p[X + 1] + Y + 1];
+
+        double u = fade(xf);
+        double v = fade(yf);
+
+        double x1 = lerp(grad(aa, xf,     yf),     grad(ba, xf - 1, yf),     u);
+        double x2 = lerp(grad(ab, xf, yf - 1),    grad(bb, xf - 1, yf - 1), u);
+        return lerp(x1, x2, v);
     }
-    private static double grad(int hash, double x, double y, double z) {
-        int h = hash & 15;
-        double u = h < 8 ? x : y;
-        double v = h < 4 ? y : h == 12 || h == 14 ? x : z;
-        return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
-    }
-    public double noise(double x, double y, double z) {
-        int X = (int) Math.floor(x) & 255;
-        int Y = (int) Math.floor(y) & 255;
-        int Z = (int) Math.floor(z) & 255;
-        x -= Math.floor(x);
-        y -= Math.floor(y);
-        z -= Math.floor(z);
-        double u = fade(x), v = fade(y), w = fade(z);
-        int A = p[X] + Y, AA = p[A] + Z, AB = p[A + 1] + Z,
-            B = p[X + 1] + Y, BA = p[B] + Z, BB = p[B + 1] + Z;
-        return lerp(w, lerp(v, lerp(u, grad(p[AA], x, y, z),
-                                      grad(p[BA], x - 1, y, z)),
-                              lerp(u, grad(p[AB], x, y - 1, z),
-                                      grad(p[BB], x - 1, y - 1, z))),
-                       lerp(v, lerp(u, grad(p[AA + 1], x, y, z - 1),
-                                      grad(p[BA + 1], x - 1, y, z - 1)),
-                              lerp(u, grad(p[AB + 1], x, y - 1, z - 1),
-                                      grad(p[BB + 1], x - 1, y - 1, z - 1))));
+
+    /** Fractal Brownian Motion (octaves), result in [-1, 1] (approx). */
+    double fbm(double x, double y, int octaves, double lacunarity, double gain) {
+        double amp = 1.0;
+        double freq = 1.0;
+        double sum = 0.0;
+        double ampSum = 0.0;
+        for (int i = 0; i < octaves; i++) {
+            sum += amp * noise(x * freq, y * freq);
+            ampSum += amp;
+            amp *= gain;         // persistence
+            freq *= lacunarity;  // frequency growth
+        }
+        return sum / ampSum; // normalize to roughly [-1,1]
     }
 }

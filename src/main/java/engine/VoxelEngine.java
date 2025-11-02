@@ -48,8 +48,8 @@ public class VoxelEngine {
     }
 
     private void initEngine() {
-    	world = new World();
-        camera = new Camera(WIDTH, HEIGHT, 75, 3);
+    	world = new World(2025L);
+        camera = new Camera(WIDTH, HEIGHT, 95, 10);
         physics = new PhysicsEngine(world, camera);
         input = new InputHandler(window, camera, physics, this);
         renderer = new Renderer(world, camera);
@@ -76,8 +76,8 @@ public class VoxelEngine {
             frames++;
             if (now - lastFpsTime >= 1.0) {
                 Vector3f pos = camera.getPosition();
-                String title = String.format("Open-Voxel Engine - Debug v0.0.1 | FPS: %d | Pos: (%.1f, %.1f, %.1f)",
-                    frames, pos.x, pos.y, pos.z);
+                String title = String.format("Open-Voxel Engine - Debug v0.0.1 | FPS: %d | Pos: (%d, %d, %d)",
+                    frames, (int)pos.x, (int)pos.y, (int)pos.z);
                 GLFW.glfwSetWindowTitle(window, title);
                 frames = 0;
                 lastFpsTime = now;

@@ -5,10 +5,14 @@ import java.io.Serializable;
 public class Chunk implements Serializable {
     public static final int SIZE = 16;
     public static final int HEIGHT = 512;
+    private int chunkX, chunkZ;
     private final Block[][][] blocks = new Block[SIZE][HEIGHT][SIZE];
+
     
 
-    public Chunk() {
+    public Chunk(int chunkX, int chunkZ) {
+    	this.chunkX = chunkX;
+    	this.chunkZ = chunkZ;
         for (int x = 0; x < SIZE; x++)
             for (int y = 0; y < HEIGHT; y++)
                 for (int z = 0; z < SIZE; z++)
