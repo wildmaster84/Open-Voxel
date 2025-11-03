@@ -1,13 +1,18 @@
 package engine.world;
 
+import engine.rendering.StaticTexture;
+import engine.rendering.AnimatedTexture;
 import engine.rendering.Texture;
 
 public enum BlockType {
     // We should do this in a more organized way...
-	AIR(null, null, null, null, null, null),
-    DIRT(new Texture("textures/dirt.png"), new Texture("textures/dirt.png"), new Texture("textures/dirt.png"), new Texture("textures/dirt.png"), new Texture("textures/dirt.png"), new Texture("textures/dirt.png")),
-    GRASS(new Texture("textures/grass_top.png"), new Texture("textures/dirt.png"), new Texture("textures/grass_side.png"), new Texture("textures/grass_side.png"), new Texture("textures/grass_side.png"), new Texture("textures/grass_side.png")),
-    STONE(new Texture("textures/stone.png"), new Texture("textures/stone.png"), new Texture("textures/stone.png"), new Texture("textures/stone.png"), new Texture("textures/stone.png"), new Texture("textures/stone.png"));
+    AIR(null, null, null, null, null, null),
+    DIRT(new StaticTexture("textures/dirt.png"), new StaticTexture("textures/dirt.png"), new StaticTexture("textures/dirt.png"), new StaticTexture("textures/dirt.png"), new StaticTexture("textures/dirt.png"), new StaticTexture("textures/dirt.png")),
+    GRASS(new StaticTexture("textures/grass_top.png"), new StaticTexture("textures/dirt.png"), new StaticTexture("textures/grass_side.png"), new StaticTexture("textures/grass_side.png"), new StaticTexture("textures/grass_side.png"), new StaticTexture("textures/grass_side.png")),
+    STONE(new StaticTexture("textures/stone.png"), new StaticTexture("textures/stone.png"), new StaticTexture("textures/stone.png"), new StaticTexture("textures/stone.png"), new StaticTexture("textures/stone.png"), new StaticTexture("textures/stone.png")),
+    // WATER is an animated vertical strip: width x (width * frames). Use AnimatedTexture.
+    // Adjust 0.15f to change frame duration (seconds per frame).
+    WATER(new AnimatedTexture("textures/water_still.png", 5f), null, null, null, null, null);
 
     public final Texture top, bottom, left, right, front, back;
 
@@ -28,7 +33,7 @@ public enum BlockType {
             case 3: return right;
             case 4: return front;
             case 5: return back;
-            default: return top;
+            default: return null;
         }
     }
 }

@@ -1,7 +1,12 @@
 package engine;
 
 import engine.rendering.Renderer;
+import engine.world.Block;
+import engine.world.BlockType;
+import engine.world.Chunk;
 import engine.world.World;
+import engine.events.GameEventManager;
+import engine.events.player.ClickEvent;
 import engine.input.InputHandler;
 import engine.physics.PhysicsEngine;
 import engine.rendering.Camera;
@@ -25,11 +30,13 @@ public class VoxelEngine {
     private InputHandler input;
     private PhysicsEngine physics;
     private boolean running = true;
-    private final String version = "Debug v0.0.2";
+    private final String version = "Debug v0.0.3";
+    private GameEventManager eventManager;
 
     public void start() {
         initGLFW();
         initEngine();
+        registerEvents();
         loop();
         cleanup();
     }
@@ -49,8 +56,9 @@ public class VoxelEngine {
     }
 
     private void initEngine() {
+    	eventManager = new GameEventManager();
     	world = new World(2025L);
-        camera = new Camera(WIDTH, HEIGHT, 95, 10);
+        camera = new Camera(WIDTH, HEIGHT, 95, 10, world);
         physics = new PhysicsEngine(world, camera);
         input = new InputHandler(window, camera, physics, this);
         renderer = new Renderer(world, camera);
@@ -70,7 +78,7 @@ public class VoxelEngine {
             input.pollEvents(delta);
             physics.update(delta, input.isJumpPressed(), input.isCrouchPressed());
 
-            renderer.render();
+            renderer.render(delta);
 
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
@@ -91,6 +99,22 @@ public class VoxelEngine {
         GLFW.glfwDestroyWindow(window);
         GLFW.glfwTerminate();
         GLFW.glfwSetErrorCallback(null).free();
+    }
+    
+    public GameEventManager getEventManager() {
+    	return eventManager;
+    }
+    
+    public void registerEvents() {
+    	eventManager.register(ClickEvent.class, e -> {
+    	    if (e.type == ClickEvent.ClickType.LEFT) {
+    	    	world.setBlock(e.worldX, e.worldY, e.worldZ, new Block(BlockType.AIR));
+    	    	renderer.invalidateBlock(e.worldX, e.worldY, e.worldZ);
+    	    } else if (e.type == ClickEvent.ClickType.RIGHT) {
+    	    	world.setBlock(e.worldX, e.worldY, e.worldZ, new Block(BlockType.DIRT));
+    	    	renderer.invalidateBlock(e.worldX, e.worldY, e.worldZ);
+    	    }
+    	});
     }
 
     public static void main(String[] args) {

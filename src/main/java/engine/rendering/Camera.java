@@ -3,6 +3,8 @@ package engine.rendering;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
+import engine.world.World;
+
 public class Camera {
     private Vector3f position;
     private float pitch, yaw;
@@ -11,8 +13,10 @@ public class Camera {
     private final float NEAR = 0.1f;
     private final float FAR = 1000f;
     private int width, height, renderDistance;
+    private World world;
 
-    public Camera(int width, int height, int levelY, int renderDistance) {
+    public Camera(int width, int height, int levelY, int renderDistance, World world) {
+    	this.world = world;
         this.width = width;
         this.height = height;
         this.renderDistance = renderDistance;
@@ -24,10 +28,7 @@ public class Camera {
 
     public Matrix4f getViewMatrix() {
         Matrix4f view = new Matrix4f();
-        view.identity()
-            .rotate((float)Math.toRadians(pitch), new Vector3f(1, 0, 0))
-            .rotate((float)Math.toRadians(yaw), new Vector3f(0, 1, 0))
-            .translate(new Vector3f(-position.x, -position.y - 1.6f, -position.z));
+        view.identity().rotate((float)Math.toRadians(pitch), new Vector3f(1, 0, 0)).rotate((float)Math.toRadians(yaw), new Vector3f(0, 1, 0)).translate(new Vector3f(-position.x, -position.y - 1.6f, -position.z));
         return view;
     }
 
@@ -37,6 +38,13 @@ public class Camera {
 
     public Vector3f getPosition() {
         return position;
+    }
+    
+    public Vector3f getLookDirection() {
+        float yawRad = (float)Math.toRadians(getYaw());
+        float pitchRad = (float)Math.toRadians(getPitch());
+        return new Vector3f((float)(Math.cos(pitchRad) * Math.sin(yawRad)), (float)(-Math.sin(pitchRad)), (float)(-Math.cos(pitchRad) * Math.cos(yawRad))
+        ).normalize();
     }
 
     public void move(Vector3f offset) {
@@ -56,7 +64,10 @@ public class Camera {
     }
 
 	public int getRenderDistance() {
-		// TODO Auto-generated method stub
 		return renderDistance;
+	}
+
+	public World getWorld() {
+		return world;
 	}
 }

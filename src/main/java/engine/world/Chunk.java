@@ -26,4 +26,12 @@ public class Chunk implements Serializable {
     public void setBlock(int x, int y, int z, Block block) {
         blocks[x][y][z] = block;
     }
+    
+    public int getChunkX() {
+    	return chunkX;
+    }
+    
+    public int getChunkZ() {
+    	return chunkZ;
+    }
 }

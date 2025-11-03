@@ -10,12 +10,12 @@ import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.file.Path;
 
-public class Texture {
-    protected int id;
-    protected int width;
-    protected int height;
+public class TextureStill {
+    private int id;
+    private int width;
+    private int height;
 
-    public Texture(String filepath) {
+    public TextureStill(String filepath) {
         ByteBuffer image = null;
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer w = stack.mallocInt(1);
@@ -63,9 +63,9 @@ public class Texture {
             // Remove leading "./src/main" if present
             String res = resourcePath.replaceFirst("^\\.\\/src\\/main\\/?", "");
             // Try both with and without leading slash
-            InputStream stream = Texture.class.getClassLoader().getResourceAsStream(res);
+            InputStream stream = TextureStill.class.getClassLoader().getResourceAsStream(res);
             if (stream == null) {
-                stream = Texture.class.getClassLoader().getResourceAsStream("/" + res);
+                stream = TextureStill.class.getClassLoader().getResourceAsStream("/" + res);
             }
             if (stream == null) return null;
 

@@ -8,25 +8,27 @@ import engine.world.BlockType;
 
 import org.joml.Vector3f;
 
-/**
- * Physics engine with robust AABB collision, jump, crouch.
- */
 public class PhysicsEngine {
     private World world;
     private Camera camera;
 
-    // Player AABB dimensions (centered at camera position)
-    private static final float PLAYER_WIDTH = 0.6f;
+    private static final float PLAYER_WIDTH  = 0.6f;
     private static final float PLAYER_HEIGHT = 1.8f;
-    private static final float PLAYER_DEPTH = 0.6f;
+    private static final float PLAYER_DEPTH  = 0.6f;
     private static final float CROUCH_HEIGHT = 1.0f;
+    private static final float EYE_HEIGHT    = 1.62f;
 
     private float velocityY = 0;
     private boolean isOnGround = false;
     private boolean crouching = false;
 
-    private final float gravity = -25f;
-    private final float jumpVelocity = 8.5f;
+    private final float gravity    = -25f;
+    private final float jumpVelocity  =  8.5f;
+
+    private final float gravityWater  = -3.0f;
+    private final float swimUpAccel   = 12.0f;
+    private final float maxSwimUpVy   =  6.0f;
+    private final float maxSwimDnVy   = -6.0f;
 
     public PhysicsEngine(World world, Camera camera) {
         this.world = world;
@@ -34,46 +36,49 @@ public class PhysicsEngine {
     }
 
     public void update(float delta, boolean jumpPressed, boolean crouchPressed) {
-        // Handle crouch
         crouching = crouchPressed;
         float playerHeight = crouching ? CROUCH_HEIGHT : PLAYER_HEIGHT;
 
-        // Handle jump
-        if (jumpPressed && isOnGround) {
-            velocityY = jumpVelocity;
-            isOnGround = false;
+        Submersion sub = computeSubmersion(camera.getPosition());
+        boolean inWater = sub.ratio > 0f;
+
+        if (!inWater) {
+            if (jumpPressed && isOnGround) {
+                velocityY = jumpVelocity;
+                isOnGround = false;
+            }
+            velocityY += gravity * delta;
+        } else {
+            if (jumpPressed) {
+                velocityY += swimUpAccel * delta;
+            } else {
+                velocityY += gravityWater * delta;
+            }
+            if (velocityY >  maxSwimUpVy) velocityY =  maxSwimUpVy;
+            if (velocityY <  maxSwimDnVy) velocityY =  maxSwimDnVy;
         }
 
-        // Apply gravity
-        velocityY += gravity * delta;
-
-        // Proposed movement
         Vector3f pos = camera.getPosition();
         float newY = pos.y + velocityY * delta;
 
-        // AABB for proposed position
         float halfW = PLAYER_WIDTH / 2f;
         float halfD = PLAYER_DEPTH / 2f;
-        float minX = pos.x - halfW;
-        float maxX = pos.x + halfW;
-        float minY = newY;
-        float maxY = newY + playerHeight;
-        float minZ = pos.z - halfD;
-        float maxZ = pos.z + halfD;
+        float minX = pos.x - halfW, maxX = pos.x + halfW;
+        float minZ = pos.z - halfD, maxZ = pos.z + halfD;
+        float minY = newY,          maxY = newY + playerHeight;
 
-        // Y collision
         boolean collidedY = false;
         for (float x = minX; x <= maxX; x += 0.3f)
         for (float z = minZ; z <= maxZ; z += 0.3f)
         for (float y = minY; y <= maxY; y += 0.3f) {
             Block block = getBlockAt(world, x, y, z);
-            if (block != null && block.getType() != BlockType.AIR) {
+            if (block != null && block.getType() != BlockType.AIR && block.getType() != BlockType.WATER) {
                 collidedY = true;
                 break;
             }
         }
+
         if (collidedY) {
-            // If moving down, snap to ground
             if (velocityY < 0) {
                 pos.y = (float)Math.floor(pos.y);
                 isOnGround = true;
@@ -83,54 +88,68 @@ public class PhysicsEngine {
             pos.y = newY;
             isOnGround = false;
         }
-
-        // X & Z movement are handled in InputHandler with AABB check per axis (see below)
     }
 
-    // Check if moving to (newX, currentY, currentZ) would collide
     public boolean canMoveToX(float newX) {
         Vector3f pos = camera.getPosition();
         float playerHeight = crouching ? CROUCH_HEIGHT : PLAYER_HEIGHT;
         float halfW = PLAYER_WIDTH / 2f;
         float halfD = PLAYER_DEPTH / 2f;
-        float minX = newX - halfW;
-        float maxX = newX + halfW;
-        float minY = pos.y;
-        float maxY = pos.y + playerHeight;
-        float minZ = pos.z - halfD;
-        float maxZ = pos.z + halfD;
+        float minX = newX - halfW, maxX = newX + halfW;
+        float minZ = pos.z - halfD, maxZ = pos.z + halfD;
+        float minY = pos.y,         maxY = pos.y + playerHeight;
         for (float x = minX; x <= maxX; x += 0.3f)
         for (float z = minZ; z <= maxZ; z += 0.3f)
         for (float y = minY; y <= maxY; y += 0.3f) {
             Block block = getBlockAt(world, x, y, z);
-            if (block != null && block.getType() != BlockType.AIR) {
-                return false;
-            }
+            if (block != null && block.getType() != BlockType.AIR && block.getType() != BlockType.WATER) return false;
         }
         return true;
     }
 
-    // Check if moving to (currentX, currentY, newZ) would collide
     public boolean canMoveToZ(float newZ) {
         Vector3f pos = camera.getPosition();
         float playerHeight = crouching ? CROUCH_HEIGHT : PLAYER_HEIGHT;
         float halfW = PLAYER_WIDTH / 2f;
         float halfD = PLAYER_DEPTH / 2f;
-        float minX = pos.x - halfW;
-        float maxX = pos.x + halfW;
-        float minY = pos.y;
-        float maxY = pos.y + playerHeight;
-        float minZ = newZ - halfD;
-        float maxZ = newZ + halfD;
+        float minX = pos.x - halfW, maxX = pos.x + halfW;
+        float minZ = newZ - halfD,  maxZ = newZ + halfD;
+        float minY = pos.y,         maxY = pos.y + playerHeight;
         for (float x = minX; x <= maxX; x += 0.3f)
         for (float z = minZ; z <= maxZ; z += 0.3f)
         for (float y = minY; y <= maxY; y += 0.3f) {
             Block block = getBlockAt(world, x, y, z);
-            if (block != null && block.getType() != BlockType.AIR) {
-                return false;
-            }
+            if (block != null && block.getType() != BlockType.AIR && block.getType() != BlockType.WATER) return false;
         }
         return true;
+    }
+
+    private static final class Submersion {
+        boolean feet, torso, head;
+        float ratio;
+    }
+
+    private Submersion computeSubmersion(Vector3f pos) {
+        int gx = (int)Math.floor(pos.x);
+        int gz = (int)Math.floor(pos.z);
+
+        int yFeet  = (int)Math.floor(pos.y);
+        int yTorso = (int)Math.floor(pos.y + EYE_HEIGHT * 0.5f);
+        int yHead  = (int)Math.floor(pos.y + EYE_HEIGHT);
+
+        Submersion s = new Submersion();
+        s.feet  = isWaterAt(gx, yFeet,  gz);
+        s.torso = isWaterAt(gx, yTorso, gz);
+        s.head  = isWaterAt(gx, yHead,  gz);
+
+        int count = (s.feet?1:0) + (s.torso?1:0) + (s.head?1:0);
+        s.ratio = count / 3.0f;
+        return s;
+    }
+
+    private boolean isWaterAt(int x, int y, int z) {
+        Block b = world.getBlock(x, y, z);
+        return b != null && b.getType() == BlockType.WATER;
     }
 
     private Block getBlockAt(World world, float x, float y, float z) {

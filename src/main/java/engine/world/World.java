@@ -1,33 +1,93 @@
 package engine.world;
 
 import java.io.*;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class World implements Serializable {
-    private Map<Long, Chunk> chunks = new HashMap<>();
-    public static final int WORLD_SIZE = 768;
-    public static final int NUM_CHUNKS = WORLD_SIZE / Chunk.SIZE;
-    
-    private final PerlinNoise perlin; // choose your seed
-    private final int SEA_LEVEL = 10;  // tweak to taste
+    private final Map<Long, Chunk> chunks = new ConcurrentHashMap<>();
+
+    private final PerlinNoise perlin;
+    private final int SEA_LEVEL = 92;
 
     public World(long seed) {
-    	perlin = new PerlinNoise(seed);
-    	for (int cx = -NUM_CHUNKS / 2; cx < NUM_CHUNKS / 2; cx++) {
-    	    for (int cz = -NUM_CHUNKS / 2; cz < NUM_CHUNKS / 2; cz++) {
-    	        chunks.put(getChunkKey(cx, cz), generateChunk(cx, cz));
-    	    }
-    	}
+        this.perlin = new PerlinNoise(seed);
+    }
+
+    public Chunk getChunk(int cx, int cz) {
+        final long key = getChunkKey(cx, cz);
+        return chunks.computeIfAbsent(key, k -> generateChunk(cx, cz));
+    }
+
+    public Chunk getChunkIfLoaded(int cx, int cz) {
+        return chunks.get(getChunkKey(cx, cz));
+    }
+
+    public void ensureChunksAround(int centerCx, int centerCz, int radius) {
+        for (int dz = -radius; dz <= radius; dz++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                getChunk(centerCx + dx, centerCz + dz);
+            }
+        }
+    }
+
+    public void unloadFarChunks(int playerChunkX, int playerChunkZ, int renderRadius) {
+        final int limit = renderRadius + 2;
+        Iterator<Map.Entry<Long, Chunk>> it = chunks.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Long, Chunk> e = it.next();
+            int cx = (int)(e.getKey() >> 32);
+            int cz = (int)(e.getKey() & 0xffffffffL);
+            if (Math.abs(cx - playerChunkX) > limit || Math.abs(cz - playerChunkZ) > limit) {
+                it.remove();
+            }
+        }
+    }
+
+    public Block getBlock(int x, int y, int z) {
+        if (y < 0 || y >= Chunk.HEIGHT) return null;
+        int chunkX = Math.floorDiv(x, Chunk.SIZE);
+        int chunkZ = Math.floorDiv(z, Chunk.SIZE);
+        int localX = Math.floorMod(x, Chunk.SIZE);
+        int localZ = Math.floorMod(z, Chunk.SIZE);
+        Chunk chunk = getChunk(chunkX, chunkZ);
+        return chunk.getBlock(localX, y, localZ);
+    }
+
+    public void setBlock(int x, int y, int z, Block block) {
+        if (y < 0 || y >= Chunk.HEIGHT) return;
+        int chunkX = Math.floorDiv(x, Chunk.SIZE);
+        int chunkZ = Math.floorDiv(z, Chunk.SIZE);
+        int localX = Math.floorMod(x, Chunk.SIZE);
+        int localZ = Math.floorMod(z, Chunk.SIZE);
+        Chunk chunk = getChunk(chunkX, chunkZ);
+        chunk.setBlock(localX, y, localZ, block);
+    }
+
+    public Chunk getChunk(int x, int y, int z) {
+        int cx = Math.floorDiv(x, Chunk.SIZE);
+        int cz = Math.floorDiv(z, Chunk.SIZE);
+        return getChunk(cx, cz);
+    }
+
+    public void save(File file) throws IOException {
+        try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(file))) {
+            out.writeObject(chunks);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public void load(File file) throws IOException, ClassNotFoundException {
+        try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(file))) {
+            Map<Long, Chunk> loaded = (Map<Long, Chunk>) in.readObject();
+            chunks.clear();
+            chunks.putAll(loaded);
+        }
     }
 
     private long getChunkKey(int x, int z) {
-        return (((long)x) << 32) | (z & 0xffffffffL);
-    }
-
-    public Chunk getChunk(int x, int z) {
-        return chunks.get(getChunkKey(x, z));
+        return (((long) x) << 32) | (z & 0xffffffffL);
     }
 
     private Chunk generateChunk(int cx, int cz) {
@@ -47,13 +107,12 @@ public class World implements Serializable {
                 int wx = cx * Chunk.SIZE + x;
                 int wz = cz * Chunk.SIZE + z;
 
-                double h1 = perlin.fbm(wx * SCALE_HILLS,  wz * SCALE_HILLS,  OCTAVES, LACUNARITY, GAIN);   // [-1,1]
-                double h2 = perlin.fbm(wx * SCALE_RIDGES, wz * SCALE_RIDGES, OCTAVES, LACUNARITY, GAIN);   // [-1,1]
-                double combined = 0.7 * h1 + 0.3 * h2;       // still roughly [-1,1]
-                double curved = Math.signum(combined) * Math.pow(Math.abs(combined), 1.2); // gentle bias
+                double h1 = perlin.fbm(wx * SCALE_HILLS,  wz * SCALE_HILLS,  OCTAVES, LACUNARITY, GAIN);
+                double h2 = perlin.fbm(wx * SCALE_RIDGES, wz * SCALE_RIDGES, OCTAVES, LACUNARITY, GAIN);
+                double combined = 0.7 * h1 + 0.3 * h2;
+                double curved = Math.signum(combined) * Math.pow(Math.abs(combined), 1.2);
 
                 int height = BASE_HEIGHT + (int) Math.round((curved * 0.5 + 0.5) * HEIGHT_VARIANCE);
-
                 if (height < 1) height = 1;
                 if (height >= Chunk.HEIGHT) height = Chunk.HEIGHT - 1;
 
@@ -61,19 +120,20 @@ public class World implements Serializable {
 
                 for (int y = 0; y < Chunk.HEIGHT; y++) {
                     if (y == 0) {
-                    	// Should be bedrock
                         chunk.setBlock(x, y, z, new Block(BlockType.STONE));
                         continue;
                     }
-
                     if (y < height - SOIL_DEPTH) {
                         chunk.setBlock(x, y, z, new Block(BlockType.STONE));
                     } else if (y < height - 1) {
-                        // for beach near water
                         if (beach && y >= SEA_LEVEL - 3) {
                             chunk.setBlock(x, y, z, new Block(BlockType.STONE));
                         } else {
-                            chunk.setBlock(x, y, z, new Block(BlockType.DIRT));
+                        	if (y < height - 1 && y >= height - 3) {
+                        		chunk.setBlock(x, y, z, new Block(BlockType.DIRT));
+                        	} else {
+                        		chunk.setBlock(x, y, z, new Block(BlockType.STONE));
+                        	}
                         }
                     } else if (y == height - 1) {
                         if (beach && y <= SEA_LEVEL) {
@@ -82,10 +142,8 @@ public class World implements Serializable {
                             chunk.setBlock(x, y, z, new Block(BlockType.GRASS));
                         }
                     } else {
-                        // above ground
                         if (y <= SEA_LEVEL) {
-                            // replace with water
-                            chunk.setBlock(x, y, z, new Block(BlockType.STONE));
+                            chunk.setBlock(x, y, z, new Block(BlockType.WATER));
                         } else {
                             chunk.setBlock(x, y, z, new Block(BlockType.AIR));
                         }
@@ -96,29 +154,8 @@ public class World implements Serializable {
         return chunk;
     }
     
-    public void unloadFarChunks(int playerChunkX, int playerChunkZ, int renderRadius) {
-        Iterator<Map.Entry<Long, Chunk>> it = chunks.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<Long, Chunk> entry = it.next();
-            int cx = (int)(entry.getKey() >> 32);
-            int cz = (int)(entry.getKey() & 0xffffffffL);
-            if (Math.abs(cx - playerChunkX) > renderRadius + 2 || Math.abs(cz - playerChunkZ) > renderRadius + 2) {
-                it.remove();
-            }
-        }
-    }
-
-    // Save/load world
-    public void save(File file) throws IOException {
-        try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(file))) {
-            out.writeObject(chunks);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    public void load(File file) throws IOException, ClassNotFoundException {
-        try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(file))) {
-            chunks = (Map<Long, Chunk>) in.readObject();
-        }
+    public boolean isWaterAt(int x, int y, int z) {
+        Block b = getBlock(x, y, z);
+        return b != null && b.getType() == BlockType.WATER;
     }
 }
