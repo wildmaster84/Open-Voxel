@@ -3,7 +3,6 @@ package engine;
 import engine.rendering.Renderer;
 import engine.world.Block;
 import engine.world.BlockType;
-import engine.world.Chunk;
 import engine.world.World;
 import engine.events.GameEventManager;
 import engine.events.player.ClickEvent;
@@ -17,9 +16,6 @@ import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.system.MemoryUtil;
 
-/**
- * Main entry for the voxel engine.
- */
 public class VoxelEngine {
     private long window;
     private final int WIDTH = 1280;
@@ -79,7 +75,7 @@ public class VoxelEngine {
             physics.update(delta, input.isJumpPressed(), input.isCrouchPressed());
 
             renderer.render(delta);
-
+            
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
             frames++;
@@ -88,8 +84,11 @@ public class VoxelEngine {
                 String title = String.format("Open-Voxel Engine - %s | FPS: %d | Pos: (%d, %d, %d)",
                     version, frames, (int)pos.x, (int)pos.y, (int)pos.z);
                 GLFW.glfwSetWindowTitle(window, title);
+                //String debugString = String.format("FPS: %s  |  X: %s Y: %s Z: %s | Chunks: %s", (int)frames, (int)pos.x, (int)pos.y, (int)pos.z, world.getChunks().entrySet().size());
+                
                 frames = 0;
                 lastFpsTime = now;
+                
             }
         }
     }

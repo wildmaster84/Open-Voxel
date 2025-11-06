@@ -14,6 +14,10 @@ public class World implements Serializable {
     public World(long seed) {
         this.perlin = new PerlinNoise(seed);
     }
+    
+    public Map<Long, Chunk> getChunks() {
+    	return chunks;
+    }
 
     public Chunk getChunk(int cx, int cz) {
         final long key = getChunkKey(cx, cz);
@@ -137,9 +141,14 @@ public class World implements Serializable {
                         }
                     } else if (y == height - 1) {
                         if (beach && y <= SEA_LEVEL) {
-                            chunk.setBlock(x, y, z, new Block(BlockType.DIRT));
+                            chunk.setBlock(x, y, z, new Block(BlockType.SAND));
                         } else {
-                            chunk.setBlock(x, y, z, new Block(BlockType.GRASS));
+                        	if (y <= SEA_LEVEL) {
+                        		chunk.setBlock(x, y, z, new Block(BlockType.DIRT));
+                        	} else {
+                        		chunk.setBlock(x, y, z, new Block(BlockType.GRASS));
+                        	}
+                            
                         }
                     } else {
                         if (y <= SEA_LEVEL) {

@@ -37,18 +37,21 @@ public class Renderer {
     private final ConcurrentHashMap<Integer, int[][]> radiusOffsetCache = new ConcurrentHashMap<>();
     private static final int MAX_BUILDS_PER_FRAME = 8;
     private static float delta = 0;
-   
+
     private float timeOfDay01 = 0f;
-    private static final float DAY_LENGTH_SEC = 1f * 60f; // 24 minutes full cycle
+    private static final float DAY_LENGTH_SEC = 24f * 60f; // 24 minutes full cycle
 
     private enum MeshState { BUILDING, READY, GPU_LOADED }
 
+    /** NOW: holds separate opaque & translucent (water) batches */
     private final class PendingMesh {
         final long key;
-        final Map<Texture, float[]> perTextureVerts;
-        PendingMesh(long key, Map<Texture, float[]> perTextureVerts) {
+        final Map<Texture, float[]> opaque;
+        final Map<Texture, float[]> translucent;
+        PendingMesh(long key, Map<Texture, float[]> opaque, Map<Texture, float[]> translucent) {
             this.key = key;
-            this.perTextureVerts = perTextureVerts;
+            this.opaque = opaque;
+            this.translucent = translucent;
         }
     }
 
@@ -262,11 +265,10 @@ public class Renderer {
         uSkyProjection = GL20.glGetUniformLocation(prog, "projection");
         uSkyView       = GL20.glGetUniformLocation(prog, "view");
         uSkyTime       = GL20.glGetUniformLocation(prog, "uTime");
-        
-        uSkySunDir  = GL20.glGetUniformLocation(prog, "uSunDir");   // NEW
-        uSkyMoonDir = GL20.glGetUniformLocation(prog, "uMoonDir");  // NEW
-        uSkyStars   = GL20.glGetUniformLocation(prog, "uStars");    // NEW
 
+        uSkySunDir  = GL20.glGetUniformLocation(prog, "uSunDir");
+        uSkyMoonDir = GL20.glGetUniformLocation(prog, "uMoonDir");
+        uSkyStars   = GL20.glGetUniformLocation(prog, "uStars");
 
         skyVao = GL30.glGenVertexArrays();
         skyVbo = GL15.glGenBuffers();
@@ -287,10 +289,7 @@ public class Renderer {
     }
 
     private void setupUnderwaterOverlay() {
-        // Screen-space triangle (covers whole screen, no VBO for UVs needed)
-        float[] verts = {
-            -1f, -1f,   3f, -1f,   -1f, 3f
-        };
+        float[] verts = { -1f, -1f,   3f, -1f,   -1f, 3f };
         overlayVao = GL30.glGenVertexArrays();
         overlayVbo = GL15.glGenBuffers();
         GL30.glBindVertexArray(overlayVao);
@@ -303,7 +302,7 @@ public class Renderer {
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
 
-        String v = 
+        String v =
             "#version 330 core\n" +
             "layout(location=0) in vec2 aPos;\n" +
             "void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }";
@@ -311,11 +310,9 @@ public class Renderer {
         String f =
             "#version 330 core\n" +
             "out vec4 FragColor;\n" +
-            "uniform vec3 uColor;       // tint color\n" +
-            "uniform float uStrength;   // 0..1\n" +
-            "void main(){\n" +
-            "  FragColor = vec4(uColor, uStrength);\n" + // straight alpha; relies on blending
-            "}";
+            "uniform vec3 uColor;\n" +
+            "uniform float uStrength;\n" +
+            "void main(){ FragColor = vec4(uColor, uStrength); }";
 
         overlayShader = new ShaderProgram(v, f);
         int prog = overlayShader.getProgramId();
@@ -323,7 +320,6 @@ public class Renderer {
         uOverlayStrength = GL20.glGetUniformLocation(prog, "uStrength");
     }
 
-    
     public void render(float delta) {
         this.delta = delta;
         timeOfDay01 = (timeOfDay01 + (delta / DAY_LENGTH_SEC)) % 1.0f;
@@ -371,6 +367,7 @@ public class Renderer {
         int buildsThisFrame = 0;
         int[][] offsets = getOffsetsSortedByDistance(renderRadius);
 
+        // PASS 1: draw opaque
         for (int i = 0; i < offsets.length; i++) {
             int dx = offsets[i][0];
             int dz = offsets[i][1];
@@ -397,9 +394,18 @@ public class Renderer {
                 }
             }
 
-            if (mesh != null) {
-                mesh.draw();
-            }
+            if (mesh != null) mesh.drawOpaque();
+        }
+
+        // PASS 2: draw translucent water (depth test ON, depth writes OFF, blending ON)
+        for (int i = 0; i < offsets.length; i++) {
+            int dx = offsets[i][0];
+            int dz = offsets[i][1];
+            int cx = cameraChunkX + dx;
+            int cz = cameraChunkZ + dz;
+
+            ChunkMesh mesh = meshCache.get(pack(cx, cz));
+            if (mesh != null) mesh.drawTranslucent();
         }
 
         GL30.glBindVertexArray(0);
@@ -407,9 +413,9 @@ public class Renderer {
 
         removeMesh(cameraChunkX, cameraChunkZ, renderRadius + 2);
         drawSkybox();
-        
+
         if (isCameraUnderwater()) {
-            float strength = 0.45f * underwaterDepthFactor(); // base * depth
+            float strength = 0.45f * underwaterDepthFactor();
             drawUnderwaterOverlay(strength);
         }
     }
@@ -462,7 +468,7 @@ public class Renderer {
         if (skyShader != null) skyShader.delete();
         if (skyVbo != 0) GL15.glDeleteBuffers(skyVbo);
         if (skyVao != 0) GL30.glDeleteVertexArrays(skyVao);
-        
+
         if (overlayShader != null) overlayShader.delete();
         if (overlayVbo != 0) GL15.glDeleteBuffers(overlayVbo);
         if (overlayVao != 0) GL30.glDeleteVertexArrays(overlayVao);
@@ -487,10 +493,14 @@ public class Renderer {
         mesherPool.shutdownNow();
     }
 
+    /** Builds two maps: opaque and translucent (water). */
     private PendingMesh buildChunkMesh(int cx, int cz, Chunk chunk) {
-        Map<Texture, FaceBatch> batches = new HashMap<>(32);
+        Map<Texture, FaceBatch> opaque = new HashMap<>(32);
+        Map<Texture, FaceBatch> trans  = new HashMap<>(8);
+
         final float baseX = cx * Chunk.SIZE;
         final float baseZ = cz * Chunk.SIZE;
+        final float WATER_LIFT = -0.03f;
 
         for (int x = 0; x < Chunk.SIZE; x++) {
             for (int y = 0; y < Chunk.HEIGHT; y++) {
@@ -505,15 +515,16 @@ public class Renderer {
                     float wz = baseZ + z;
 
                     for (int face = 0; face < 6; face++) {
+                        // OPAQUE
                         if (type != BlockType.WATER) {
                             if (!shouldRenderFace(world, cx, cz, x, y, z, FaceDirection.get(face))) continue;
                             Texture tex = type.getTextureForFace(face);
                             if (tex == null) continue;
 
-                            FaceBatch fb = batches.get(tex);
+                            FaceBatch fb = opaque.get(tex);
                             if (fb == null) {
                                 fb = new FaceBatch(256 * 6 * 6);
-                                batches.put(tex, fb);
+                                opaque.put(tex, fb);
                             }
                             float[] verts = FaceVertices.get(face);
 
@@ -532,6 +543,7 @@ public class Renderer {
                             continue;
                         }
 
+                        // WATER (translucent)
                         int[] dir = FaceDirection.get(face);
                         int nx = x + dir[0];
                         int ny = y + dir[1];
@@ -557,14 +569,14 @@ public class Renderer {
                             if (!aboveIsAir) continue;
                             Texture tex = type.getTextureForFace(0);
                             if (tex == null) continue;
-                            FaceBatch fb = batches.get(tex);
+                            FaceBatch fb = trans.get(tex);
                             if (fb == null) {
                                 fb = new FaceBatch(256 * 6 * 6);
-                                batches.put(tex, fb);
+                                trans.put(tex, fb);
                             }
                             float[] verts = FaceVertices.get(0);
                             float[] ao4 = {1f,1f,1f,1f};
-                            fb.addFaceWithAO(wx, wy, wz, verts, ao4);
+                            fb.addFaceWithAO(wx, wy + WATER_LIFT, wz, verts, ao4);
                             continue;
                         }
 
@@ -575,47 +587,63 @@ public class Renderer {
 
                         Texture tex = type.getTextureForFace(face);
                         if (tex == null) continue;
-                        FaceBatch fb = batches.get(tex);
+                        FaceBatch fb = trans.get(tex);
                         if (fb == null) {
                             fb = new FaceBatch(256 * 6 * 6);
-                            batches.put(tex, fb);
+                            trans.put(tex, fb);
                         }
                         float[] verts = FaceVertices.get(face);
-                        final float waterYOffset = 1f;
                         float[] ao4 = {1f,1f,1f,1f};
-                        fb.addFaceWithAO(wx, wy + waterYOffset, wz, verts, ao4);
+                        fb.addFaceWithAO(wx, wy + WATER_LIFT, wz, verts, ao4);
                     }
                 }
             }
         }
 
-        Map<Texture, float[]> perTex = new HashMap<>(batches.size());
-        for (Map.Entry<Texture, FaceBatch> e : batches.entrySet()) {
-            perTex.put(e.getKey(), e.getValue().toArray());
-        }
-        return new PendingMesh(pack(cx, cz), perTex);
+        Map<Texture, float[]> perOpaque = new HashMap<>(opaque.size());
+        for (Map.Entry<Texture, FaceBatch> e : opaque.entrySet()) perOpaque.put(e.getKey(), e.getValue().toArray());
+
+        Map<Texture, float[]> perTrans = new HashMap<>(trans.size());
+        for (Map.Entry<Texture, FaceBatch> e : trans.entrySet()) perTrans.put(e.getKey(), e.getValue().toArray());
+
+        return new PendingMesh(pack(cx, cz), perOpaque, perTrans);
     }
 
     private ChunkMesh createChunkMesh(PendingMesh pm) {
         ChunkMesh mesh = new ChunkMesh();
-        for (Map.Entry<Texture, float[]> e : pm.perTextureVerts.entrySet()) {
+
+        for (Map.Entry<Texture, float[]> e : pm.opaque.entrySet()) {
             Texture tex = e.getKey();
             float[] verts = e.getValue();
             if (verts.length == 0) continue;
 
             int vbo = GL15.glGenBuffers();
             GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-
             FloatBuffer buf = MemoryUtil.memAllocFloat(verts.length);
             buf.put(verts).flip();
-
             GL15.glBufferData(GL15.GL_ARRAY_BUFFER, buf, GL15.GL_STATIC_DRAW);
             MemoryUtil.memFree(buf);
-
             GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
 
-            mesh.addBatch(tex, vbo, verts.length / 6); // 6 floats/vertex
+            mesh.addOpaque(tex, vbo, verts.length / 6);
         }
+
+        for (Map.Entry<Texture, float[]> e : pm.translucent.entrySet()) {
+            Texture tex = e.getKey();
+            float[] verts = e.getValue();
+            if (verts.length == 0) continue;
+
+            int vbo = GL15.glGenBuffers();
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+            FloatBuffer buf = MemoryUtil.memAllocFloat(verts.length);
+            buf.put(e.getValue()).flip();
+            GL15.glBufferData(GL15.GL_ARRAY_BUFFER, buf, GL15.GL_STATIC_DRAW);
+            MemoryUtil.memFree(buf);
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+
+            mesh.addTranslucent(tex, vbo, verts.length / 6);
+        }
+
         return mesh;
     }
 
@@ -699,15 +727,14 @@ public class Renderer {
         GL20.glUniformMatrix4fv(uSkyView, false, matBuffer);
 
         GL20.glUniform1f(uSkyTime, timeOfDay01);
-        
-        double ang = 2.0 * Math.PI * (timeOfDay01 - 0); // to adjust the position of the sun/moon
+
+        double ang = 2.0 * Math.PI * (timeOfDay01 - 0);
         float sy = (float) Math.sin(ang);
         float sz = (float) Math.cos(ang);
 
         GL20.glUniform3f(uSkySunDir,  0f, sy, sz);
         GL20.glUniform3f(uSkyMoonDir, 0f, -sy, -sz);
 
-        // Star intensity
         GL20.glUniform1f(uSkyStars, 5.0f);
 
         GL30.glBindVertexArray(skyVao);
@@ -723,68 +750,119 @@ public class Renderer {
     private static final class ChunkMesh {
         private static final int STRIDE = 6 * Float.BYTES; // POS+UV+AO
 
-        private final Map<Texture, Integer> vbos = new HashMap<>();
-        private final Map<Texture, Integer> counts = new HashMap<>();
+        private final Map<Texture, Integer> vboOpaque = new HashMap<>();
+        private final Map<Texture, Integer> vboTrans  = new HashMap<>();
+        private final Map<Texture, Integer> cntOpaque = new HashMap<>();
+        private final Map<Texture, Integer> cntTrans  = new HashMap<>();
 
-        void addBatch(Texture texture, int vboId, int vertexCount) {
-            vbos.put(texture, vboId);
-            counts.put(texture, vertexCount);
+        void addOpaque(Texture texture, int vboId, int vertexCount) {
+            vboOpaque.put(texture, vboId);
+            cntOpaque.put(texture, vertexCount);
+        }
+        void addTranslucent(Texture texture, int vboId, int vertexCount) {
+            vboTrans.put(texture, vboId);
+            cntTrans.put(texture, vertexCount);
         }
 
-        void draw() {
+        private void bindForDraw(Texture tex, int yOffLoc, int offLoc, int scaleLoc) {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            if (tex instanceof AnimatedTexture) {
+                ((AnimatedTexture) tex).update(Renderer.delta);
+                tex.bind();
+                if (yOffLoc >= 0) GL20.glUniform1f(yOffLoc, -0.1f);
+            } else {
+                tex.bind();
+                if (offLoc   >= 0) GL20.glUniform1f(offLoc,   0f);
+                if (scaleLoc >= 0) GL20.glUniform1f(scaleLoc, 1f);
+                if (yOffLoc  >= 0) GL20.glUniform1f(yOffLoc,  0f);
+            }
+        }
+
+        private void enableAttribs() {
             GL20.glEnableVertexAttribArray(0);
             GL20.glEnableVertexAttribArray(1);
             GL20.glEnableVertexAttribArray(2);
-
-            int currentProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
-            int offLoc = -1, scaleLoc = -1, yOffLoc = 0;
-            if (currentProgram != 0) {
-                offLoc = GL20.glGetUniformLocation(currentProgram, "uFrameOffset");
-                scaleLoc = GL20.glGetUniformLocation(currentProgram, "uFrameScale");
-                yOffLoc = GL20.glGetUniformLocation(currentProgram, "yOffset");
-            }
-
-            for (Map.Entry<Texture, Integer> e : vbos.entrySet()) {
-                Texture tex = e.getKey();
-                int vboId = e.getValue();
-                int count = counts.get(tex);
-
-                GL13.glActiveTexture(GL13.GL_TEXTURE0);
-
-                if (tex instanceof AnimatedTexture) {
-                    tex.bind();
-                    if (yOffLoc >= 0) GL20.glUniform1f(yOffLoc, -0.1f);
-                    ((AnimatedTexture) tex).update(delta);
-                } else {
-                    tex.bind();
-                    if (currentProgram != 0) {
-                        if (offLoc >= 0) GL20.glUniform1f(offLoc, 0.0f);
-                        if (scaleLoc >= 0) GL20.glUniform1f(scaleLoc, 1.0f);
-                        if (yOffLoc >= 0) GL20.glUniform1f(yOffLoc, 0);
-                    }
-                }
-
-                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vboId);
-
-                GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, STRIDE, 0L);
-                GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, STRIDE, 3L * Float.BYTES);
-                GL20.glVertexAttribPointer(2, 1, GL11.GL_FLOAT, false, STRIDE, 5L * Float.BYTES);
-
-                GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, count);
-            }
-
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        }
+        private void disableAttribs() {
             GL20.glDisableVertexAttribArray(2);
             GL20.glDisableVertexAttribArray(1);
             GL20.glDisableVertexAttribArray(0);
         }
 
+        void drawOpaque() {
+            enableAttribs();
+
+            int prog = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+            int offLoc = -1, scaleLoc = -1, yOffLoc = -1;
+            if (prog != 0) {
+                offLoc   = GL20.glGetUniformLocation(prog, "uFrameOffset");
+                scaleLoc = GL20.glGetUniformLocation(prog, "uFrameScale");
+                yOffLoc  = GL20.glGetUniformLocation(prog, "yOffset");
+            }
+
+            for (Map.Entry<Texture, Integer> e : vboOpaque.entrySet()) {
+                Texture tex = e.getKey();
+                int vboId = e.getValue();
+                int count = cntOpaque.get(tex);
+
+                bindForDraw(tex, yOffLoc, offLoc, scaleLoc);
+
+                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vboId);
+                GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, STRIDE, 0L);
+                GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, STRIDE, 3L * Float.BYTES);
+                GL20.glVertexAttribPointer(2, 1, GL11.GL_FLOAT, false, STRIDE, 5L * Float.BYTES);
+                GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, count);
+            }
+
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            disableAttribs();
+        }
+
+        void drawTranslucent() {
+            // blend like before; depth test ON, writes OFF
+            GL11.glEnable(GL11.GL_BLEND);
+            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            GL11.glDepthMask(false);
+
+            enableAttribs();
+
+            int prog = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+            int offLoc = -1, scaleLoc = -1, yOffLoc = -1;
+            if (prog != 0) {
+                offLoc   = GL20.glGetUniformLocation(prog, "uFrameOffset");
+                scaleLoc = GL20.glGetUniformLocation(prog, "uFrameScale");
+                yOffLoc  = GL20.glGetUniformLocation(prog, "yOffset");
+            }
+
+            for (Map.Entry<Texture, Integer> e : vboTrans.entrySet()) {
+                Texture tex = e.getKey();
+                int vboId = e.getValue();
+                int count = cntTrans.get(tex);
+
+                bindForDraw(tex, yOffLoc, offLoc, scaleLoc);
+
+                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vboId);
+                GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, STRIDE, 0L);
+                GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, STRIDE, 3L * Float.BYTES);
+                GL20.glVertexAttribPointer(2, 1, GL11.GL_FLOAT, false, STRIDE, 5L * Float.BYTES);
+                GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, count);
+            }
+
+            // restore state
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            disableAttribs();
+            GL11.glDepthMask(true);
+            GL11.glDisable(GL11.GL_BLEND);
+        }
+
         void delete() {
-            for (int vbo : vbos.values()) GL15.glDeleteBuffers(vbo);
-            vbos.clear();
-            counts.clear();
+            for (int vbo : vboOpaque.values()) GL15.glDeleteBuffers(vbo);
+            for (int vbo : vboTrans.values())  GL15.glDeleteBuffers(vbo);
+            vboOpaque.clear(); vboTrans.clear();
+            cntOpaque.clear(); cntTrans.clear();
         }
     }
+
 
     private void removeMesh(int centerCx, int centerCz, int radius) {
         int r2 = radius;
@@ -824,7 +902,7 @@ public class Renderer {
         radiusOffsetCache.put(radius, list);
         return list;
     }
-    
+
     private boolean isCameraUnderwater() {
         int gx = (int)Math.floor(camera.getPosition().x);
         int gy = (int)Math.floor(camera.getPosition().y + 1);
@@ -832,7 +910,7 @@ public class Renderer {
         Block b = world.getBlock(gx, gy, gz);
         return b != null && b.getType() == BlockType.WATER;
     }
-    
+
     private float underwaterDepthFactor() {
         int gx = (int)Math.floor(camera.getPosition().x);
         int gy = (int)Math.floor(camera.getPosition().y);
@@ -858,7 +936,7 @@ public class Renderer {
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
 
         overlayShader.use();
-        GL20.glUniform3f(uOverlayColor, 0.12f, 0.38f, 0.65f);
+        GL20.glUniform3f(uOverlayColor, 0.12f, 0.38f, 0.65f); // tint color
         GL20.glUniform1f(uOverlayStrength, Math.min(strength, 0.8f));
 
         GL30.glBindVertexArray(overlayVao);
@@ -869,6 +947,4 @@ public class Renderer {
         GL11.glDisable(GL11.GL_BLEND);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
     }
-
-
 }

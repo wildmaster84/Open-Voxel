@@ -163,8 +163,8 @@ public class InputHandler {
     }
 
     public void pollEvents(float delta) {
-        float runSpeed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS ? 0.35f : 0.25f;
-        float shiftSpeed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS ? 0.12f : 0.25f;
+        float runSpeed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS ? 0.15f : 0.10f;
+        float shiftSpeed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS ? 0.04f : 0.10f;
         float moveSpeed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS ? runSpeed : shiftSpeed;
         float yawRad = (float) Math.toRadians(camera.getYaw());
         float dX = 0, dZ = 0;

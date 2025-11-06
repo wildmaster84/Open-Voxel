@@ -10,8 +10,7 @@ public enum BlockType {
     DIRT(new StaticTexture("textures/dirt.png"), new StaticTexture("textures/dirt.png"), new StaticTexture("textures/dirt.png"), new StaticTexture("textures/dirt.png"), new StaticTexture("textures/dirt.png"), new StaticTexture("textures/dirt.png")),
     GRASS(new StaticTexture("textures/grass_top.png"), new StaticTexture("textures/dirt.png"), new StaticTexture("textures/grass_side.png"), new StaticTexture("textures/grass_side.png"), new StaticTexture("textures/grass_side.png"), new StaticTexture("textures/grass_side.png")),
     STONE(new StaticTexture("textures/stone.png"), new StaticTexture("textures/stone.png"), new StaticTexture("textures/stone.png"), new StaticTexture("textures/stone.png"), new StaticTexture("textures/stone.png"), new StaticTexture("textures/stone.png")),
-    // WATER is an animated vertical strip: width x (width * frames). Use AnimatedTexture.
-    // Adjust 0.15f to change frame duration (seconds per frame).
+    SAND(new StaticTexture("textures/sand.png"), new StaticTexture("textures/sand.png"), new StaticTexture("textures/sand.png"), new StaticTexture("textures/sand.png"), new StaticTexture("textures/sand.png"), new StaticTexture("textures/sand.png")),
     WATER(new AnimatedTexture("textures/water_still.png", 5f), null, null, null, null, null);
 
     public final Texture top, bottom, left, right, front, back;
