@@ -1,10 +1,15 @@
 package engine.rendering;
 
 import engine.world.World;
+import engine.world.block.Slab;
+import engine.world.block.Slab.SlabType;
+import engine.world.block.Stairs;
 import engine.world.Chunk;
+import engine.input.InputHandler;
 import engine.rendering.FaceRenderer.FaceDirection;
 import engine.rendering.FaceRenderer.FaceVertices;
-import engine.world.Block;
+import engine.world.AbstractBlock;
+import engine.world.AbstractBlock.Facing;
 import engine.world.BlockType;
 import org.lwjgl.opengl.*;
 import org.joml.Matrix4f;
@@ -37,13 +42,13 @@ public class Renderer {
     private final ConcurrentHashMap<Integer, int[][]> radiusOffsetCache = new ConcurrentHashMap<>();
     private static final int MAX_BUILDS_PER_FRAME = 8;
     private static float delta = 0;
+    private OutlineRenderer outline = new OutlineRenderer();
 
     private float timeOfDay01 = 0f;
     private static final float DAY_LENGTH_SEC = 24f * 60f; // 24 minutes full cycle
 
     private enum MeshState { BUILDING, READY, GPU_LOADED }
 
-    /** NOW: holds separate opaque & translucent (water) batches */
     private final class PendingMesh {
         final long key;
         final Map<Texture, float[]> opaque;
@@ -63,6 +68,7 @@ public class Renderer {
         cacheUniforms();
         setupSkybox();
         setupUnderwaterOverlay();
+        outline.init();
     }
 
     private static final int[][] NORM = {
@@ -83,7 +89,7 @@ public class Renderer {
         {-1,-1,  1,-1,  1, 1, -1, 1}
     };
 
-    private static boolean isSolid(Block b) {
+    private static boolean isSolid(AbstractBlock b) {
         if (b == null) return false;
         BlockType t = b.getType();
         return t != null && t != BlockType.AIR && t != BlockType.WATER;
@@ -113,9 +119,9 @@ public class Renderer {
     }
 
     private static float dayAmount(float t) {
-        double phase = t - 0.25; // noon at 0.25
+        double phase = t - 0.25;
         double c = Math.cos(2.0 * Math.PI * phase);
-        return (float)((c + 1.0) * 0.5); // 0..1
+        return (float)((c + 1.0) * 0.5);
     }
 
     private void setupGL() {
@@ -320,7 +326,7 @@ public class Renderer {
         uOverlayStrength = GL20.glGetUniformLocation(prog, "uStrength");
     }
 
-    public void render(float delta) {
+    public void render(float delta, InputHandler input) {
         this.delta = delta;
         timeOfDay01 = (timeOfDay01 + (delta / DAY_LENGTH_SEC)) % 1.0f;
 
@@ -367,7 +373,6 @@ public class Renderer {
         int buildsThisFrame = 0;
         int[][] offsets = getOffsetsSortedByDistance(renderRadius);
 
-        // PASS 1: draw opaque
         for (int i = 0; i < offsets.length; i++) {
             int dx = offsets[i][0];
             int dz = offsets[i][1];
@@ -397,7 +402,6 @@ public class Renderer {
             if (mesh != null) mesh.drawOpaque();
         }
 
-        // PASS 2: draw translucent water (depth test ON, depth writes OFF, blending ON)
         for (int i = 0; i < offsets.length; i++) {
             int dx = offsets[i][0];
             int dz = offsets[i][1];
@@ -418,6 +422,37 @@ public class Renderer {
             float strength = 0.45f * underwaterDepthFactor();
             drawUnderwaterOverlay(strength);
         }
+        
+        if (input != null) {
+            var h = input.getHoverHit();
+            if (h != null) {
+                final float x0 = h.x,   x1 = h.x + 1f;
+                final float y0 = h.y,   y1 = h.y + 1f;
+                final float z0 = h.z,   z1 = h.z + 1f;
+
+                final float EPS = 0.002f; // push along normal to avoid z-fighting
+                float[][] corners = null;
+
+                if (h.nx != 0) {
+                    float px = (h.nx < 0) ? x0 : x1;
+                    px += h.nx * EPS;
+                    corners = new float[][] { {px,y0,z0}, {px,y0,z1}, {px,y1,z1}, {px,y1,z0} };
+                } else if (h.ny != 0) {
+                    float py = (h.ny < 0) ? y0 : y1;
+                    py += h.ny * EPS;
+                    corners = new float[][] { {x0,py,z0}, {x1,py,z0}, {x1,py,z1}, {x0,py,z1} };
+                } else if (h.nz != 0) {
+                    float pz = (h.nz < 0) ? z0 : z1;
+                    pz += h.nz * EPS;
+                    corners = new float[][] { {x0,y0,pz}, {x1,y0,pz}, {x1,y1,pz}, {x0,y1,pz} };
+                }
+
+                if (corners != null) {
+                    outline.draw(corners, camera.getProjectionMatrix(), camera.getViewMatrix());
+                }
+            }
+        }
+
     }
 
     public void invalidateChunk(int cx, int cz) {
@@ -493,7 +528,6 @@ public class Renderer {
         mesherPool.shutdownNow();
     }
 
-    /** Builds two maps: opaque and translucent (water). */
     private PendingMesh buildChunkMesh(int cx, int cz, Chunk chunk) {
         Map<Texture, FaceBatch> opaque = new HashMap<>(32);
         Map<Texture, FaceBatch> trans  = new HashMap<>(8);
@@ -505,7 +539,7 @@ public class Renderer {
         for (int x = 0; x < Chunk.SIZE; x++) {
             for (int y = 0; y < Chunk.HEIGHT; y++) {
                 for (int z = 0; z < Chunk.SIZE; z++) {
-                    Block block = chunk.getBlock(x, y, z);
+                	AbstractBlock block = chunk.getBlock(x, y, z);
                     if (block == null) continue;
                     BlockType type = block.getType();
                     if (type == null || type == BlockType.AIR) continue;
@@ -514,10 +548,39 @@ public class Renderer {
                     float wy = y;
                     float wz = baseZ + z;
 
+                    if (type == BlockType.STAIR) {
+                    	Stairs stairs = (Stairs)block;
+                        Texture tex = type.getTextureForFace(0);
+                        if (tex != null) {
+                            FaceBatch fb = opaque.computeIfAbsent(tex, k -> new FaceBatch(256 * 6 * 6));
+                            Facing facing = block.getFacing();
+                            boolean upside = stairs.isUpsideDown();
+                            var quads = FaceRenderer.stairQuads(facing, upside);
+                            float[] ao4 = {1f,1f,1f,1f};
+                            for (float[] q : quads) fb.addFaceWithAO(wx, wy, wz, q, ao4);
+                        }
+                        continue;
+                    }
+
+                    if (type == BlockType.SLAB) {
+                    	Slab slab = (Slab)block;
+                        if (slab.getSlabType() == SlabType.DOUBLE) {
+                        } else {
+                            Texture tex = type.getTextureForFace(0);
+                            if (tex != null) {
+                                FaceBatch fb = opaque.computeIfAbsent(tex, k -> new FaceBatch(256 * 6 * 6));
+                                boolean topHalf = slab.getSlabType() == SlabType.TOP;
+                                var quads = engine.rendering.FaceRenderer.slabQuads(topHalf);
+                                float[] ao4 = {1f,1f,1f,1f};
+                                for (float[] q : quads) fb.addFaceWithAO(wx, wy, wz, q, ao4);
+                            }
+                            continue;
+                        }
+                    }
+
                     for (int face = 0; face < 6; face++) {
-                        // OPAQUE
                         if (type != BlockType.WATER) {
-                            if (!shouldRenderFace(world, cx, cz, x, y, z, FaceDirection.get(face))) continue;
+                        	if (!shouldRenderFace(world, cx, cz, x, y, z, face)) continue;
                             Texture tex = type.getTextureForFace(face);
                             if (tex == null) continue;
 
@@ -526,7 +589,7 @@ public class Renderer {
                                 fb = new FaceBatch(256 * 6 * 6);
                                 opaque.put(tex, fb);
                             }
-                            float[] verts = FaceVertices.get(face);
+                            float[] verts = FaceRenderer.FaceVertices.get(face);
 
                             int nx = NORM[face][0], ny = NORM[face][1], nz = NORM[face][2];
                             int gx = (int)wx + nx;
@@ -543,8 +606,7 @@ public class Renderer {
                             continue;
                         }
 
-                        // WATER (translucent)
-                        int[] dir = FaceDirection.get(face);
+                        int[] dir = FaceRenderer.FaceDirection.get(face);
                         int nx = x + dir[0];
                         int ny = y + dir[1];
                         int nz = z + dir[2];
@@ -559,7 +621,7 @@ public class Renderer {
                         int localNz = Math.floorMod(globalNz, Chunk.SIZE);
 
                         Chunk neighborChunk = world.getChunk(neighborChunkX, neighborChunkZ);
-                        Block neighbor = null;
+                        AbstractBlock neighbor = null;
                         if (neighborChunk != null && localNx >= 0 && localNx < Chunk.SIZE && localNy >= 0 && localNy < Chunk.HEIGHT && localNz >= 0 && localNz < Chunk.SIZE) {
                             neighbor = neighborChunk.getBlock(localNx, localNy, localNz);
                         }
@@ -574,7 +636,7 @@ public class Renderer {
                                 fb = new FaceBatch(256 * 6 * 6);
                                 trans.put(tex, fb);
                             }
-                            float[] verts = FaceVertices.get(0);
+                            float[] verts = FaceRenderer.FaceVertices.get(0);
                             float[] ao4 = {1f,1f,1f,1f};
                             fb.addFaceWithAO(wx, wy + WATER_LIFT, wz, verts, ao4);
                             continue;
@@ -592,7 +654,7 @@ public class Renderer {
                             fb = new FaceBatch(256 * 6 * 6);
                             trans.put(tex, fb);
                         }
-                        float[] verts = FaceVertices.get(face);
+                        float[] verts = FaceRenderer.FaceVertices.get(face);
                         float[] ao4 = {1f,1f,1f,1f};
                         fb.addFaceWithAO(wx, wy + WATER_LIFT, wz, verts, ao4);
                     }
@@ -608,6 +670,7 @@ public class Renderer {
 
         return new PendingMesh(pack(cx, cz), perOpaque, perTrans);
     }
+
 
     private ChunkMesh createChunkMesh(PendingMesh pm) {
         ChunkMesh mesh = new ChunkMesh();
@@ -647,7 +710,8 @@ public class Renderer {
         return mesh;
     }
 
-    private boolean shouldRenderFace(World world, int chunkX, int chunkZ, int x, int y, int z, int[] dir) {
+    private boolean shouldRenderFace(World world, int chunkX, int chunkZ, int x, int y, int z, int faceIndex) {
+        int[] dir = FaceRenderer.FaceDirection.get(faceIndex);
         int nx = x + dir[0];
         int ny = y + dir[1];
         int nz = z + dir[2];
@@ -663,11 +727,46 @@ public class Renderer {
         int localZ = Math.floorMod(globalZ, Chunk.SIZE);
 
         Chunk neighborChunk = world.getChunk(neighborChunkX, neighborChunkZ);
+        if (neighborChunk == null
+                || localX < 0 || localX >= Chunk.SIZE
+                || localY < 0 || localY >= Chunk.HEIGHT
+                || localZ < 0 || localZ >= Chunk.SIZE) {
+            return true;
+        }
 
-        if (neighborChunk == null || localX < 0 || localX >= Chunk.SIZE || localY < 0 || localY >= Chunk.HEIGHT || localZ < 0 || localZ >= Chunk.SIZE)
+        AbstractBlock neighbor = neighborChunk.getBlock(localX, localY, localZ);
+        if (neighbor == null) return true;
+
+        BlockType nt = neighbor.getType();
+        if (nt == null || nt == BlockType.AIR) return true;
+        if (nt == BlockType.WATER) return true;
+
+        return !neighborFullyOccludesFace(neighbor, faceIndex);
+    }
+    
+    private boolean neighborFullyOccludesFace(AbstractBlock neighbor, int faceIndex) {
+        BlockType nt = neighbor.getType();
+
+        if (nt == BlockType.STAIR) {
             return false;
-        Block neighbor = neighborChunk.getBlock(localX, localY, localZ);
-        return neighbor == null || neighbor.getType() == BlockType.AIR || neighbor.getType() == BlockType.WATER;
+        }
+
+        if (nt == BlockType.SLAB) {
+        	Slab slab = (Slab)neighbor;
+            if (slab.getSlabType() == SlabType.DOUBLE) {
+                return true;
+            }
+
+            if (faceIndex == 0 && slab.getSlabType() == SlabType.TOP) {
+                return false;
+            }
+
+            if (faceIndex == 1 && slab.getSlabType() != SlabType.TOP) {
+                return true;
+            }
+            return false;
+        }
+        return true;
     }
 
     private static long pack(int cx, int cz) {
@@ -907,7 +1006,7 @@ public class Renderer {
         int gx = (int)Math.floor(camera.getPosition().x);
         int gy = (int)Math.floor(camera.getPosition().y + 1);
         int gz = (int)Math.floor(camera.getPosition().z);
-        Block b = world.getBlock(gx, gy, gz);
+        AbstractBlock b = world.getBlock(gx, gy, gz);
         return b != null && b.getType() == BlockType.WATER;
     }
 
@@ -919,7 +1018,7 @@ public class Renderer {
         int search = 6;
         int y = gy;
         while (y < gy + search) {
-            Block b = world.getBlock(gx, y, gz);
+        	AbstractBlock b = world.getBlock(gx, y, gz);
             if (b == null || b.getType() != BlockType.WATER) break;
             y++;
         }

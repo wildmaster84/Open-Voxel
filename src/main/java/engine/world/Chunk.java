@@ -6,7 +6,7 @@ public class Chunk implements Serializable {
     public static final int SIZE = 16;
     public static final int HEIGHT = 512;
     private int chunkX, chunkZ;
-    private final Block[][][] blocks = new Block[SIZE][HEIGHT][SIZE];
+    private final AbstractBlock[][][] blocks = new AbstractBlock[SIZE][HEIGHT][SIZE];
 
     
 
@@ -16,14 +16,14 @@ public class Chunk implements Serializable {
         for (int x = 0; x < SIZE; x++)
             for (int y = 0; y < HEIGHT; y++)
                 for (int z = 0; z < SIZE; z++)
-                    blocks[x][y][z] = new Block(BlockType.AIR);
+                    blocks[x][y][z] = new AbstractBlock(BlockType.AIR);
     }
 
-    public Block getBlock(int x, int y, int z) {
+    public AbstractBlock getBlock(int x, int y, int z) {
         return blocks[x][y][z];
     }
 
-    public void setBlock(int x, int y, int z, Block block) {
+    public void setBlock(int x, int y, int z, AbstractBlock block) {
         blocks[x][y][z] = block;
     }
     

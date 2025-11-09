@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.openvoxel</groupId>
     <artifactId>client</artifactId>
-    <version>0.0.4-Debug</version>
+    <version>0.0.5-Debug</version>
     <name>Open-Voxel</name>
     <description>MIT-licensed Java voxel game engine</description>
     <url>https://github.com/wildmaster84/Open-Voxel</url>

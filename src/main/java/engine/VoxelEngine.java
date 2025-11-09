@@ -1,7 +1,7 @@
 package engine;
 
 import engine.rendering.Renderer;
-import engine.world.Block;
+import engine.world.AbstractBlock;
 import engine.world.BlockType;
 import engine.world.World;
 import engine.events.GameEventManager;
@@ -26,7 +26,7 @@ public class VoxelEngine {
     private InputHandler input;
     private PhysicsEngine physics;
     private boolean running = true;
-    private final String version = "Debug v0.0.3";
+    private final String version = (getClass().getPackage().getImplementationVersion() == null ? "0.0.0-Debug" : getClass().getPackage().getImplementationVersion());;
     private GameEventManager eventManager;
 
     public void start() {
@@ -74,7 +74,7 @@ public class VoxelEngine {
             input.pollEvents(delta);
             physics.update(delta, input.isJumpPressed(), input.isCrouchPressed());
 
-            renderer.render(delta);
+            renderer.render(delta, input);
             
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
@@ -106,12 +106,16 @@ public class VoxelEngine {
     
     public void registerEvents() {
     	eventManager.register(ClickEvent.class, e -> {
-    	    if (e.type == ClickEvent.ClickType.LEFT) {
-    	    	world.setBlock(e.worldX, e.worldY, e.worldZ, new Block(BlockType.AIR));
+    	    if (e.type == ClickEvent.ClickType.LEFT && e.worldY >= 1) {
+    	    	world.setBlock(e.worldX, e.worldY, e.worldZ, new AbstractBlock(BlockType.AIR));
     	    	renderer.invalidateBlock(e.worldX, e.worldY, e.worldZ);
     	    } else if (e.type == ClickEvent.ClickType.RIGHT) {
-    	    	world.setBlock(e.worldX, e.worldY, e.worldZ, new Block(BlockType.DIRT));
-    	    	renderer.invalidateBlock(e.worldX, e.worldY, e.worldZ);
+    	    	if (camera.getBlockInHand() != new AbstractBlock(BlockType.AIR)) {
+    	    		world.setBlock(e.worldX, e.worldY, e.worldZ, camera.getBlockInHand());
+	    	    	renderer.invalidateBlock(e.worldX, e.worldY, e.worldZ);
+    	    	}
+    	    } else if (e.type == ClickEvent.ClickType.MIDDLE) {
+    	    	camera.pickBlock();
     	    }
     	});
     }

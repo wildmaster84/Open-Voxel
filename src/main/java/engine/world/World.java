@@ -5,6 +5,12 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import engine.world.AbstractBlock;
+import engine.world.AbstractBlock.Facing;
+import engine.world.block.Slab;
+import engine.world.block.Slab.SlabType;
+import engine.world.block.Stairs;
+
 public class World implements Serializable {
     private final Map<Long, Chunk> chunks = new ConcurrentHashMap<>();
 
@@ -49,7 +55,7 @@ public class World implements Serializable {
         }
     }
 
-    public Block getBlock(int x, int y, int z) {
+    public AbstractBlock getBlock(int x, int y, int z) {
         if (y < 0 || y >= Chunk.HEIGHT) return null;
         int chunkX = Math.floorDiv(x, Chunk.SIZE);
         int chunkZ = Math.floorDiv(z, Chunk.SIZE);
@@ -59,7 +65,7 @@ public class World implements Serializable {
         return chunk.getBlock(localX, y, localZ);
     }
 
-    public void setBlock(int x, int y, int z, Block block) {
+    public void setBlock(int x, int y, int z, AbstractBlock block) {
         if (y < 0 || y >= Chunk.HEIGHT) return;
         int chunkX = Math.floorDiv(x, Chunk.SIZE);
         int chunkZ = Math.floorDiv(z, Chunk.SIZE);
@@ -124,37 +130,37 @@ public class World implements Serializable {
 
                 for (int y = 0; y < Chunk.HEIGHT; y++) {
                     if (y == 0) {
-                        chunk.setBlock(x, y, z, new Block(BlockType.STONE));
+                        chunk.setBlock(x, y, z, new AbstractBlock(BlockType.BEDROCK));
                         continue;
                     }
                     if (y < height - SOIL_DEPTH) {
-                        chunk.setBlock(x, y, z, new Block(BlockType.STONE));
+                        chunk.setBlock(x, y, z, new AbstractBlock(BlockType.STONE));
                     } else if (y < height - 1) {
                         if (beach && y >= SEA_LEVEL - 3) {
-                            chunk.setBlock(x, y, z, new Block(BlockType.STONE));
+                            chunk.setBlock(x, y, z, new AbstractBlock(BlockType.STONE));
                         } else {
                         	if (y < height - 1 && y >= height - 3) {
-                        		chunk.setBlock(x, y, z, new Block(BlockType.DIRT));
+                        		chunk.setBlock(x, y, z, new AbstractBlock(BlockType.DIRT));
                         	} else {
-                        		chunk.setBlock(x, y, z, new Block(BlockType.STONE));
+                        		chunk.setBlock(x, y, z, new AbstractBlock(BlockType.STONE));
                         	}
                         }
                     } else if (y == height - 1) {
                         if (beach && y <= SEA_LEVEL) {
-                            chunk.setBlock(x, y, z, new Block(BlockType.SAND));
+                            chunk.setBlock(x, y, z, new AbstractBlock(BlockType.SAND));
                         } else {
                         	if (y <= SEA_LEVEL) {
-                        		chunk.setBlock(x, y, z, new Block(BlockType.DIRT));
+                        		chunk.setBlock(x, y, z, new AbstractBlock(BlockType.DIRT));
                         	} else {
-                        		chunk.setBlock(x, y, z, new Block(BlockType.GRASS));
+                        		chunk.setBlock(x, y, z, new AbstractBlock(BlockType.GRASS));
                         	}
                             
                         }
                     } else {
                         if (y <= SEA_LEVEL) {
-                            chunk.setBlock(x, y, z, new Block(BlockType.WATER));
+                            chunk.setBlock(x, y, z, new AbstractBlock(BlockType.WATER));
                         } else {
-                            chunk.setBlock(x, y, z, new Block(BlockType.AIR));
+                            chunk.setBlock(x, y, z, new AbstractBlock(BlockType.AIR));
                         }
                     }
                 }
@@ -164,7 +170,7 @@ public class World implements Serializable {
     }
     
     public boolean isWaterAt(int x, int y, int z) {
-        Block b = getBlock(x, y, z);
+    	AbstractBlock b = getBlock(x, y, z);
         return b != null && b.getType() == BlockType.WATER;
     }
 }

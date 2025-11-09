@@ -3,6 +3,10 @@ package engine.rendering;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
+import engine.input.InputHandler;
+import engine.input.InputHandler.Hit;
+import engine.world.AbstractBlock;
+import engine.world.BlockType;
 import engine.world.World;
 
 public class Camera {
@@ -14,6 +18,8 @@ public class Camera {
     private final float FAR = 1000f;
     private int width, height, renderDistance;
     private World world;
+    private InputHandler input;
+    private AbstractBlock block = new AbstractBlock(BlockType.AIR);
 
     public Camera(int width, int height, int levelY, int renderDistance, World world) {
     	this.world = world;
@@ -24,6 +30,10 @@ public class Camera {
         pitch = -30;
         yaw = 0;
         projection = new Matrix4f().perspective((float)Math.toRadians(FOV), (float)width/height, NEAR, FAR);
+    }
+    
+    public void setInput(InputHandler input) {
+    	this.input = input;
     }
 
     public Matrix4f getViewMatrix() {
@@ -69,5 +79,19 @@ public class Camera {
 
 	public World getWorld() {
 		return world;
+	}
+	
+	public InputHandler getInputHandler() {
+		return input;
+	}
+
+	public void pickBlock() {
+		Hit h = input.pickBlockFromCamera();
+		if (h == null) return;
+		block = world.getBlock(h.x, h.y, h.z);
+	}
+	
+	public AbstractBlock getBlockInHand() {
+		return block;
 	}
 }
