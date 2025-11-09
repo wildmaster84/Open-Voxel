@@ -1,50 +1,67 @@
 package engine.world;
 
 import engine.physics.PhysicsEngine.AABB;
+import engine.world.block.Block;
+import engine.world.block.BlockState;
+import engine.world.block.BlockType;
 import engine.world.block.Slab;
 import engine.world.block.Stairs;
 
 import java.util.Collections;
 import java.util.List;
 
-/** Base block: concrete full cube by default. */
 public class AbstractBlock {
-    protected final BlockType type;
-    
+    private int state;
+    private BlockType type;
+
     public enum Facing { NORTH, SOUTH, EAST, WEST }
 
-    private Facing facing = Facing.NORTH;
-
-    // Optional generic metadata if you still need it elsewhere.
-    protected byte metadata = 0;
-    protected short id = 0;
+    public AbstractBlock(int packedState) {
+        this.state = packedState;
+        this.type  = BlockType.fromId(BlockState.typeId(packedState));
+    }
 
     public AbstractBlock(BlockType type) {
-        this.type = type;
+        this(BlockState.make(type.getId()));
     }
+
+    public int getState() { return state; }
     
-    public void setFacing(Facing facing) { this.facing = facing; }
-    public Facing getFacing() { return facing; }
+    public void setState(int newState) {
+        this.state = newState;
+        this.type = BlockType.fromId(BlockState.typeId(newState));
+    }
 
-    // -------- Core ----------
     public BlockType getType() { return type; }
+    
+    public int getId() { return type.getId();}
 
-    /** For your requested API: returns "the class instance" (this). */
-    public AbstractBlock getState() { return this; }
+    public boolean isSlab() { return type == BlockType.SLAB; }
+    public int slabKind()   { return BlockState.slabKind(state); }              // 0=bottom,1=top,2=double
+    public boolean isSlabBottom() { return isSlab() && slabKind() == BlockState.SLAB_KIND_BOTTOM; }
+    public boolean isSlabTop()    { return isSlab() && slabKind() == BlockState.SLAB_KIND_TOP; }
+    public boolean isSlabDouble() { return isSlab() && slabKind() == BlockState.SLAB_KIND_DOUBLE; }
 
-    // -------- Kind checks (polymorphic) ----------
-    public boolean isSlab()   { return this instanceof Slab; }
-    public boolean isStairs() { return this instanceof Stairs; }
+    public boolean isStairs()        { return type == BlockType.STAIR; }
+    public int stairsFacing()        { return BlockState.stairsFacing(state); } // 0=E,1=W,2=S,3=N (matches BlockState docs)
+    public boolean stairsUpsideDown(){ return BlockState.stairsUpside(state); }
 
-    public short getId() { return id; }
-    public void setId(short id) { this.id = id; }
-    public byte  getMetadata() { return metadata; }
-    public void  setMetadata(byte m) { this.metadata = m; }
-
-
-    // -------- Collision (base = full cube; air/water = empty) ----------
     public List<AABB> getCollisionBoxes() {
         if (type == BlockType.AIR || type == BlockType.WATER) return Collections.emptyList();
         return List.of(new AABB(0,0,0, 1,1,1));
+    }
+    
+    public static AbstractBlock fromState(int packedState) {
+        int tid = BlockState.typeId(packedState);
+
+        if (tid == BlockType.SLAB.getId()) {
+            return new Slab(packedState);
+        }
+        if (tid == BlockType.STAIR.getId()) {
+            return new Stairs(packedState);
+        }
+
+        // default full cube
+        return new Block(packedState);
     }
 }

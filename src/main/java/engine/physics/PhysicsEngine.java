@@ -1,9 +1,12 @@
 package engine.physics;
 
 import engine.world.World;
-import engine.world.Chunk;
 import engine.world.AbstractBlock;
-import engine.world.BlockType;
+import engine.world.Chunk;
+import engine.world.block.BlockState;
+import engine.world.block.BlockType;
+import engine.world.block.Slab;
+import engine.world.block.Stairs;
 import engine.rendering.Camera;
 import org.joml.Vector3f;
 
@@ -14,38 +17,27 @@ public class PhysicsEngine {
     private final World world;
     private final Camera camera;
 
-    // player dimensions
-    private static final float PLAYER_WIDTH  = 0.6f;
-    private static final float PLAYER_DEPTH  = 0.6f;
+    private static final float PLAYER_WIDTH = 0.6f;
+    private static final float PLAYER_DEPTH = 0.6f;
     private static final float PLAYER_HEIGHT = 1.8f;
     private static final float CROUCH_HEIGHT = 1.0f;
-    private static final float EYE_HEIGHT    = 1.62f;
+    private static final float EYE_HEIGHT = 1.62f;
 
-    // movement/physics
     private float velocityY = 0f;
     private boolean isOnGround = false;
     private boolean crouching = false;
-    
     private boolean jumpedThisTick = false;
 
-    // gravity/jump
-    private static final float GRAVITY        = -10f;
-    private static final float JUMP_VELOCITY  =   5.5f;
+    private static final float GRAVITY = -25f;
+    private static final float JUMP_VELOCITY = 8f;
 
-    // water/swim
-    private static final float GRAVITY_WATER  =  -2.0f;
-    private static final float SWIM_UP_ACCEL  =  6.0f;
-    private static final float SWIM_VY_UP_MAX =   3.0f;
-    private static final float SWIM_VY_DN_MAX =  -1.3f;
+    private static final float GRAVITY_WATER = -2.0f;
+    private static final float SWIM_UP_ACCEL = 6.0f;
+    private static final float SWIM_VY_UP_MAX = 3.0f;
+    private static final float SWIM_VY_DN_MAX = -1.3f;
 
-    private static final float STEP_HEIGHT    = 0.5f;
-    
+    private static final float STEP_HEIGHT = 0.5f;
     private float pendingStepRise = 0f;
-    public float consumeStepRise() { float r = pendingStepRise; pendingStepRise = 0f; return r; }
-    
-    private boolean allowStepUp() {
-        return isOnGround && !jumpedThisTick && velocityY <= 1e-4f;
-    }
 
     public PhysicsEngine(World world, Camera camera) {
         this.world = world;
@@ -54,7 +46,17 @@ public class PhysicsEngine {
 
     public boolean isOnGround() { return isOnGround; }
 
-    public void update(float delta, boolean jumpPressed, boolean crouchPressed) {
+    public float consumeStepRise() {
+        float r = pendingStepRise;
+        pendingStepRise = 0f;
+        return r;
+    }
+
+    private boolean allowStepUp() {
+        return isOnGround && !jumpedThisTick && velocityY <= 1e-4f;
+    }
+
+    public void tick(float delta, boolean jumpPressed, boolean crouchPressed) {
         crouching = crouchPressed;
         final float playerHeight = crouching ? CROUCH_HEIGHT : PLAYER_HEIGHT;
 
@@ -65,41 +67,37 @@ public class PhysicsEngine {
             if (jumpPressed && isOnGround) {
                 velocityY = JUMP_VELOCITY;
                 isOnGround = false;
-                jumpedThisTick = true;        
+                jumpedThisTick = true;
             } else {
-            	jumpedThisTick = false;
+                jumpedThisTick = false;
             }
             velocityY += GRAVITY * delta;
         } else {
-        	 jumpedThisTick = jumpPressed;
+            jumpedThisTick = jumpPressed;
             if (jumpPressed) {
                 velocityY += SWIM_UP_ACCEL * delta;
             } else {
                 velocityY += GRAVITY_WATER * delta;
             }
-            if (velocityY >  SWIM_VY_UP_MAX) velocityY =  SWIM_VY_UP_MAX;
-            if (velocityY <  SWIM_VY_DN_MAX) velocityY =  SWIM_VY_DN_MAX;
+            if (velocityY > SWIM_VY_UP_MAX) velocityY = SWIM_VY_UP_MAX;
+            if (velocityY < SWIM_VY_DN_MAX) velocityY = SWIM_VY_DN_MAX;
         }
 
-        // --- Build player AABB centered on X/Z, standing on minY ---
         Vector3f pos = camera.getPosition();
         AABB player = playerAABB(pos.x, pos.y, pos.z, playerHeight);
 
         float dy = velocityY * delta;
-
         List<AABB> colliders = collectNearbyColliders(player, 0f, dy, 0f);
-
         float resolvedDy = collideY(player, colliders, dy);
+
         if (resolvedDy != dy) {
-            if (dy < 0) {
-                isOnGround = true;
-            }
+            if (dy < 0) isOnGround = true;
             velocityY = 0f;
         } else {
             isOnGround = false;
         }
+
         player = player.offset(0f, resolvedDy, 0f);
-        
         pos.y = player.minY;
     }
 
@@ -107,10 +105,8 @@ public class PhysicsEngine {
         Vector3f pos = camera.getPosition();
         AABB player = playerAABB(pos.x, pos.y, pos.z, playerHeight);
         List<AABB> colliders = collectNearbyColliders(player, dx, 0f, 0f);
-
         float resolvedDx = collideX(player, colliders, dx);
 
-        // Only try stepping if: blocked, step enabled, and we are grounded & not jumping
         if (Math.abs(resolvedDx - dx) > 1e-6f && STEP_HEIGHT > 0f && allowStepUp()) {
             float stepRise = tryStepUp(player, colliders, dx, 0f, STEP_HEIGHT);
             if (stepRise > 0f) {
@@ -127,7 +123,6 @@ public class PhysicsEngine {
         Vector3f pos = camera.getPosition();
         AABB player = playerAABB(pos.x, pos.y, pos.z, playerHeight);
         List<AABB> colliders = collectNearbyColliders(player, 0f, 0f, dz);
-
         float resolvedDz = collideZ(player, colliders, dz);
 
         if (Math.abs(resolvedDz - dz) > 1e-6f && STEP_HEIGHT > 0f && allowStepUp()) {
@@ -142,7 +137,6 @@ public class PhysicsEngine {
         return resolvedDz;
     }
 
-
     public boolean canMoveToX(float newX) {
         Vector3f pos = camera.getPosition();
         float h = crouching ? CROUCH_HEIGHT : PLAYER_HEIGHT;
@@ -152,6 +146,7 @@ public class PhysicsEngine {
         float resolved = collideX(player, colliders, dx);
         return Math.abs(resolved - dx) < 1e-6f;
     }
+
     public boolean canMoveToZ(float newZ) {
         Vector3f pos = camera.getPosition();
         float h = crouching ? CROUCH_HEIGHT : PLAYER_HEIGHT;
@@ -170,7 +165,6 @@ public class PhysicsEngine {
 
     private List<AABB> collectNearbyColliders(AABB player, float dx, float dy, float dz) {
         final float PAD = 0.001f;
-
         float minX = Math.min(player.minX, player.minX + dx) - PAD;
         float minY = Math.min(player.minY, player.minY + dy) - PAD;
         float minZ = Math.min(player.minZ, player.minZ + dz) - PAD;
@@ -178,31 +172,40 @@ public class PhysicsEngine {
         float maxY = Math.max(player.maxY, player.maxY + dy) + PAD;
         float maxZ = Math.max(player.maxZ, player.maxZ + dz) + PAD;
 
-        int x0 = (int)Math.floor(minX);
-        int y0 = (int)Math.floor(minY);
-        int z0 = (int)Math.floor(minZ);
-        int x1 = (int)Math.floor(maxX);
-        int y1 = (int)Math.floor(maxY);
-        int z1 = (int)Math.floor(maxZ);
+        int x0 = (int) Math.floor(minX);
+        int y0 = (int) Math.floor(minY);
+        int z0 = (int) Math.floor(minZ);
+        int x1 = (int) Math.floor(maxX);
+        int y1 = (int) Math.floor(maxY);
+        int z1 = (int) Math.floor(maxZ);
 
         ArrayList<AABB> out = new ArrayList<>();
         for (int y = y0; y <= y1; y++) {
+            if (y < 0 || y >= Chunk.HEIGHT) continue;
             for (int z = z0; z <= z1; z++) {
                 for (int x = x0; x <= x1; x++) {
-                	AbstractBlock b = getBlockAt(world, x, y, z);
-                    if (b == null) continue;
-                    BlockType t = b.getType();
-                    if (t == null || t == BlockType.AIR || t == BlockType.WATER) continue;
+                    int state = getStateAt(world, x, y, z);
+                    if (state == 0) continue;
 
-                    List<AABB> boxes = b.getCollisionBoxes();
-                    if (boxes == null || boxes.isEmpty()) continue;
-                    for (AABB local : boxes) out.add(local.offset(x, y, z));
+                    int typeId = BlockState.typeId(state);
+                    BlockType type = BlockType.fromId(typeId);
+                    if (type == null) continue;
+                    if (type == BlockType.AIR || type == BlockType.WATER) continue;
+
+                    getCollisionBoxesForState(state, out, x, y, z);
                 }
             }
         }
         return out;
     }
 
+    private static void getCollisionBoxesForState(int state, List<AABB> out, int bx, int by, int bz) {
+    	AbstractBlock block = AbstractBlock.fromState(state);
+
+        for (AABB local : block.getCollisionBoxes()) {
+            out.add(local.offset(bx, by, bz));
+        }
+    }
 
     private float collideX(AABB player, List<AABB> colliders, float dx) {
         float out = dx;
@@ -223,14 +226,10 @@ public class PhysicsEngine {
     private float tryStepUp(AABB player, List<AABB> ignored, float dx, float dz, float maxStep) {
         final float stepInc = 0.05f;
         float climbed = 0f;
-
         while (climbed < maxStep) {
             climbed += stepInc;
-
             AABB raised = player.offset(0f, climbed, 0f);
-
             List<AABB> col = collectNearbyColliders(raised, dx, 0f, dz);
-
             float dyFree = collideY(player, col, climbed);
             if (Math.abs(dyFree - climbed) > 1e-4f) continue;
 
@@ -241,54 +240,42 @@ public class PhysicsEngine {
             float dxFree = collideX(raised, col, dx);
             float dzFree = collideZ(raised, col, dz);
             if (Math.abs(dxFree - dx) < 1e-4f && Math.abs(dzFree - dz) < 1e-4f) {
-            	System.out.println(climbed);
+                System.out.println(climbed);
                 return climbed;
             }
         }
         return 0f;
     }
-
-
-
+    
     private static final class Submersion {
         boolean feet, torso, head;
         float ratio;
     }
+
     private Submersion computeSubmersion(Vector3f pos) {
-        int gx = (int)Math.floor(pos.x);
-        int gz = (int)Math.floor(pos.z);
-
-        int yFeet  = (int)Math.floor(pos.y);
-        int yTorso = (int)Math.floor(pos.y + EYE_HEIGHT * 0.5f);
-        int yHead  = (int)Math.floor(pos.y + EYE_HEIGHT);
-
+        int gx = (int) Math.floor(pos.x);
+        int gz = (int) Math.floor(pos.z);
+        int yFeet  = (int) Math.floor(pos.y);
+        int yTorso = (int) Math.floor(pos.y + EYE_HEIGHT * 0.5f);
+        int yHead  = (int) Math.floor(pos.y + EYE_HEIGHT);
         Submersion s = new Submersion();
         s.feet  = isWaterAt(gx, yFeet,  gz);
         s.torso = isWaterAt(gx, yTorso, gz);
         s.head  = isWaterAt(gx, yHead,  gz);
-
-        int count = (s.feet?1:0) + (s.torso?1:0) + (s.head?1:0);
+        int count = (s.feet ? 1 : 0) + (s.torso ? 1 : 0) + (s.head ? 1 : 0);
         s.ratio = count / 3.0f;
         return s;
     }
+
     private boolean isWaterAt(int x, int y, int z) {
-    	AbstractBlock b = world.getBlock(x, y, z);
-        return b != null && b.getType() == BlockType.WATER;
+        int state = getStateAt(world, x, y, z);
+        return BlockState.typeId(state) == BlockType.WATER.getId();
     }
 
-    private AbstractBlock getBlockAt(World world, int x, int y, int z) {
-        int chunkX = Math.floorDiv(x, Chunk.SIZE);
-        int chunkZ = Math.floorDiv(z, Chunk.SIZE);
-        int localX = Math.floorMod(x, Chunk.SIZE);
-        int localY = y;
-        int localZ = Math.floorMod(z, Chunk.SIZE);
-
-        Chunk chunk = world.getChunk(chunkX, chunkZ);
-        if (chunk == null || localX < 0 || localX >= Chunk.SIZE || localY < 0 || localY >= Chunk.HEIGHT || localZ < 0 || localZ >= Chunk.SIZE)
-            return null;
-        return chunk.getBlock(localX, localY, localZ);
+    private static int getStateAt(World world, int x, int y, int z) {
+        return world.getBlock(x, y, z).getState();
     }
-    
+
     public static final class AABB {
         public final float minX, minY, minZ;
         public final float maxX, maxY, maxZ;
@@ -305,9 +292,9 @@ public class PhysicsEngine {
         private boolean overlap1D(float a0, float a1, float b0, float b1) {
             return a1 > b0 && a0 < b1;
         }
-        private boolean overlapX(AABB o){ return overlap1D(minX,maxX,o.minX,o.maxX); }
-        private boolean overlapY(AABB o){ return overlap1D(minY,maxY,o.minY,o.maxY); }
-        private boolean overlapZ(AABB o){ return overlap1D(minZ,maxZ,o.minZ,o.maxZ); }
+        private boolean overlapX(AABB o) { return overlap1D(minX, maxX, o.minX, o.maxX); }
+        private boolean overlapY(AABB o) { return overlap1D(minY, maxY, o.minY, o.maxY); }
+        private boolean overlapZ(AABB o) { return overlap1D(minZ, maxZ, o.minZ, o.maxZ); }
 
         public float collideX(AABB moving, float dx) {
             if (!overlapY(moving) || !overlapZ(moving)) return dx;
@@ -328,5 +315,4 @@ public class PhysicsEngine {
             return dz;
         }
     }
-
 }
