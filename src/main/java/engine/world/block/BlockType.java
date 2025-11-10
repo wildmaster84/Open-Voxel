@@ -39,7 +39,7 @@ public enum BlockType {
     }
 
     private static Texture texture(String path, boolean animated) {
-        if (animated) return new AnimatedTexture(path, 10f);
+        if (animated) return new AnimatedTexture(path, 0.2f);  // 200ms per frame
         return new Texture(path);
     }
 
