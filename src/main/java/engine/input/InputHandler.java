@@ -32,10 +32,6 @@ public class InputHandler {
     private boolean rightWasDown = false;
     private Hit hoverHit;
     private VoxelEngine voxelEngine;
-    
-    // Sampled input state (updated per-frame)
-    private boolean wPressed, sPressed, aPressed, dPressed;
-    private boolean sprintPressed, crouchPressed;
 
     public InputHandler(long window, Camera camera, PhysicsEngine physics, VoxelEngine voxelEngine) {
         this.voxelEngine = voxelEngine;
@@ -195,48 +191,37 @@ public class InputHandler {
         return null;
     }
 
-    public void sampleInput() {
-        // Sample movement keys
-        wPressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_W) == GLFW.GLFW_PRESS;
-        sPressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_S) == GLFW.GLFW_PRESS;
-        aPressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_A) == GLFW.GLFW_PRESS;
-        dPressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_D) == GLFW.GLFW_PRESS;
-        sprintPressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS;
-        crouchPressed = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS;
-        
-        // Handle clicks (still per-frame for responsiveness)
-        handleClicks();
-    }
-    
-    public void applyMovement(float delta) {
+    public void pollEvents(float delta) {
+        boolean sprint = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS;
+        boolean crouch = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS;
         float base = 4.0f; // units per second
         float moveSpeed = base;
         
-        if (sprintPressed) moveSpeed = 6.0f;
-        if (crouchPressed) moveSpeed = 2.4f;
+        if (sprint) moveSpeed = 6.0f;
+        if (crouch) moveSpeed = 2.4f;
         
         float yawRad = (float) Math.toRadians(camera.getYaw());
         float dX = 0f, dZ = 0f;
         
-        if (wPressed) {
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_W) == GLFW.GLFW_PRESS) {
             dX += (float) Math.sin(yawRad) * moveSpeed * delta;
             dZ -= (float) Math.cos(yawRad) * moveSpeed * delta;
         }
-        if (sPressed) {
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_S) == GLFW.GLFW_PRESS) {
             dX -= (float) Math.sin(yawRad) * moveSpeed * delta;
             dZ += (float) Math.cos(yawRad) * moveSpeed * delta;
         }
-        if (aPressed) {
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_A) == GLFW.GLFW_PRESS) {
             dX -= (float) Math.cos(yawRad) * moveSpeed * delta;
             dZ -= (float) Math.sin(yawRad) * moveSpeed * delta;
         }
-        if (dPressed) {
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_D) == GLFW.GLFW_PRESS) {
             dX += (float) Math.cos(yawRad) * moveSpeed * delta;
             dZ += (float) Math.sin(yawRad) * moveSpeed * delta;
         }
         
         Vector3f pos = camera.getPosition();
-        float playerHeight = crouchPressed ? 1.0f : 1.8f;
+        float playerHeight = crouch ? 1.0f : 1.8f;
         
         if (dX != 0f) {
             float allowedX = physics.resolveHorizontalX(dX, playerHeight);
@@ -256,9 +241,7 @@ public class InputHandler {
             if (stepRise > 0f)
                 pos.y += stepRise;
         }
-    }
-    
-    private void handleClicks() {
+        
         double now = GLFW.glfwGetTime();
         boolean leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
         boolean middleDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_MIDDLE) == GLFW.GLFW_PRESS;

@@ -82,14 +82,13 @@ public class VoxelEngine {
 			
 			accumulator += frameTime;
 			
-			// Sample input state every frame for responsiveness
-			input.sampleInput();
+			// Process input and physics every frame for smooth controls
+			input.pollEvents(frameTime);
+			physics.tick(frameTime, input.isJumpPressed(), input.isCrouchPressed());
 			
-			// Fixed timestep updates
+			// Fixed timestep updates for animations and time-of-day only
 			int ticksThisFrame = 0;
 			while (accumulator >= TICK_DT && ticksThisFrame < MAX_TICKS_PER_FRAME) {
-				input.applyMovement(TICK_DT);
-				physics.tick(TICK_DT, input.isJumpPressed(), input.isCrouchPressed());
 				renderer.tick(TICK_DT);
 				accumulator -= TICK_DT;
 				ticksThisFrame++;
