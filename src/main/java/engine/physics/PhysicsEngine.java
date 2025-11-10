@@ -23,8 +23,8 @@ public class PhysicsEngine {
 	private boolean isOnGround = false;
 	private boolean crouching = false;
 	private boolean jumpedThisTick = false;
-	private static final float GRAVITY = -10f;
-	private static final float JUMP_VELOCITY = 5.5f;
+	private static final float GRAVITY = -25f;
+	private static final float JUMP_VELOCITY = 8f;
 	private static final float GRAVITY_WATER = -2.0f;
 	private static final float SWIM_UP_ACCEL = 6.0f;
 	private static final float SWIM_VY_UP_MAX = 3.0f;
@@ -51,7 +51,7 @@ public class PhysicsEngine {
 		return isOnGround;
 	}
 
-	public void update(float delta, boolean jumpPressed, boolean crouchPressed) {
+	public void tick(float delta, boolean jumpPressed, boolean crouchPressed) {
 		crouching = crouchPressed;
 		final float playerHeight = crouching ? CROUCH_HEIGHT : PLAYER_HEIGHT;
 		Submersion sub = computeSubmersion(camera.getPosition());

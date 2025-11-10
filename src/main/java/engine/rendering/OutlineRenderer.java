@@ -1,7 +1,7 @@
 package engine.rendering;
 
 import org.joml.Matrix4f;
-import org.lwjgl.opengl.*;
+import org.lwjgl.opengl.GL30;
 import org.lwjgl.system.MemoryUtil;
 
 import java.nio.FloatBuffer;
@@ -23,27 +23,27 @@ public final class OutlineRenderer {
                    "void main(){ FragColor = uColor; }";
         shader = new ShaderProgram(v, f);
         int prog = shader.getProgramId();
-        uProj  = GL20.glGetUniformLocation(prog, "projection");
-        uView  = GL20.glGetUniformLocation(prog, "view");
-        uModel = GL20.glGetUniformLocation(prog, "model");
-        uColor = GL20.glGetUniformLocation(prog, "uColor");
+        uProj  = GL30.glGetUniformLocation(prog, "projection");
+        uView  = GL30.glGetUniformLocation(prog, "view");
+        uModel = GL30.glGetUniformLocation(prog, "model");
+        uColor = GL30.glGetUniformLocation(prog, "uColor");
 
         vao = GL30.glGenVertexArrays();
-        vbo = GL15.glGenBuffers();
+        vbo = GL30.glGenBuffers();
 
         GL30.glBindVertexArray(vao);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, 4 * 3 * Float.BYTES, GL15.GL_DYNAMIC_DRAW);
+        GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vbo);
+        GL30.glBufferData(GL30.GL_ARRAY_BUFFER, 4 * 3 * Float.BYTES, GL30.GL_DYNAMIC_DRAW);
 
-        GL20.glEnableVertexAttribArray(0);
-        GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 3 * Float.BYTES, 0L);
+        GL30.glEnableVertexAttribArray(0);
+        GL30.glVertexAttribPointer(0, 3, GL30.GL_FLOAT, false, 3 * Float.BYTES, 0L);
 
         GL30.glBindVertexArray(0);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
     }
 
     public void dispose() {
-        if (vbo != 0) GL15.glDeleteBuffers(vbo);
+        if (vbo != 0) GL30.glDeleteBuffers(vbo);
         if (vao != 0) GL30.glDeleteVertexArrays(vao);
         if (shader != null) shader.delete();
         vbo = vao = 0; shader = null;
@@ -58,29 +58,29 @@ public final class OutlineRenderer {
             fb.put(corners[i][0]).put(corners[i][1]).put(corners[i][2]);
         }
         fb.flip();
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-        GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0, fb);
+        GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vbo);
+        GL30.glBufferSubData(GL30.GL_ARRAY_BUFFER, 0, fb);
         MemoryUtil.memFree(fb);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
 
         shader.use();
 
         FloatBuffer mb = MemoryUtil.memAllocFloat(16);
-        projection.get(mb.clear()); GL20.glUniformMatrix4fv(uProj, false, mb);
-        view.get(mb.clear());       GL20.glUniformMatrix4fv(uView, false, mb);
+        projection.get(mb.clear()); GL30.glUniformMatrix4fv(uProj, false, mb);
+        view.get(mb.clear());       GL30.glUniformMatrix4fv(uView, false, mb);
         new Matrix4f().identity().get(mb.clear());
-        GL20.glUniformMatrix4fv(uModel, false, mb);
+        GL30.glUniformMatrix4fv(uModel, false, mb);
         MemoryUtil.memFree(mb);
 
-        if (uColor >= 0) GL20.glUniform4f(uColor, 0f, 0f, 0f, 1f); // black
+        if (uColor >= 0) GL30.glUniform4f(uColor, 0f, 0f, 0f, 1f); // black
 
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glLineWidth(1.5f);
+        GL30.glEnable(GL30.GL_DEPTH_TEST);
+        GL30.glLineWidth(1.5f);
 
         GL30.glBindVertexArray(vao);
-        GL11.glDrawArrays(GL11.GL_LINE_LOOP, 0, 4);
+        GL30.glDrawArrays(GL30.GL_LINE_LOOP, 0, 4);
         GL30.glBindVertexArray(0);
 
-        GL20.glUseProgram(0);
+        GL30.glUseProgram(0);
     }
 }

@@ -1,8 +1,5 @@
 package engine.rendering;
 
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 
 public class AnimatedTexture extends Texture {
@@ -30,12 +27,34 @@ public class AnimatedTexture extends Texture {
 		}
 	}
 
+	public float getFrameOffset() {
+		int totalHeight = this.height;
+		int framePixels = this.width;
+		if (totalHeight <= 0 || framePixels <= 0)
+			return 0f;
+		float frameHeightFraction = (float) framePixels / (float) totalHeight;
+		float texel = 1.0f / (float) totalHeight;
+		float pad = 0.5f * texel;
+		return currentFrame * frameHeightFraction + pad;
+	}
+
+	public float getFrameScale() {
+		int totalHeight = this.height;
+		int framePixels = this.width;
+		if (totalHeight <= 0 || framePixels <= 0)
+			return 1f;
+		float frameHeightFraction = (float) framePixels / (float) totalHeight;
+		float texel = 1.0f / (float) totalHeight;
+		float pad = 0.5f * texel;
+		return frameHeightFraction - 2.0f * pad;
+	}
+
 	@Override
 	public void bind() {
-		GL13.glActiveTexture(GL13.GL_TEXTURE0);
+		GL30.glActiveTexture(GL30.GL_TEXTURE0);
 		if (id != 0)
 			GL30.glBindTexture(GL30.GL_TEXTURE_2D, id);
-		int currentProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+		int currentProgram = GL30.glGetInteger(GL30.GL_CURRENT_PROGRAM);
 		if (currentProgram != 0) {
 			int totalHeight = this.height;
 			int framePixels = this.width;
@@ -46,12 +65,12 @@ public class AnimatedTexture extends Texture {
 			float pad = 0.5f * texel;
 			float offset = currentFrame * frameHeightFraction + pad;
 			float scale = frameHeightFraction - 2.0f * pad;
-			int offLoc = GL20.glGetUniformLocation(currentProgram, "uFrameOffset");
-			int scaleLoc = GL20.glGetUniformLocation(currentProgram, "uFrameScale");
+			int offLoc = GL30.glGetUniformLocation(currentProgram, "uFrameOffset");
+			int scaleLoc = GL30.glGetUniformLocation(currentProgram, "uFrameScale");
 			if (offLoc >= 0)
-				GL20.glUniform1f(offLoc, offset);
+				GL30.glUniform1f(offLoc, offset);
 			if (scaleLoc >= 0)
-				GL20.glUniform1f(scaleLoc, scale);
+				GL30.glUniform1f(scaleLoc, scale);
 		}
 	}
 

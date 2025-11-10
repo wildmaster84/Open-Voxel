@@ -10,7 +10,7 @@ import engine.input.InputHandler;
 import engine.world.AbstractBlock;
 import engine.world.AbstractBlock.Facing;
 
-import org.lwjgl.opengl.*;
+import org.lwjgl.opengl.GL30;
 import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryUtil;
 
@@ -40,12 +40,11 @@ public class Renderer {
     private final ConcurrentHashMap<Long, MeshState> meshStates = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Integer, int[][]> radiusOffsetCache = new ConcurrentHashMap<>();
     private static final int MAX_BUILDS_PER_FRAME = 8;
-    private static float delta = 0;
     private OutlineRenderer outline = new OutlineRenderer();
 
     private float timeOfDay01 = 0f;
     private static final float DAY_LENGTH_SEC = 24f * 60f;
-
+    
     private enum MeshState { BUILDING, READY, GPU_LOADED }
 
     private final class PendingMesh {
@@ -77,22 +76,22 @@ public class Renderer {
     }
 
     private void setupGL() {
-        GL11.glClearColor(0.6f, 0.6f, 0.6f, 1.0f);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
+    	GL30.glClearColor(0.6f, 0.6f, 0.6f, 1.0f);
+        GL30.glEnable(GL30.GL_DEPTH_TEST);
 
         vaoId = GL30.glGenVertexArrays();
         GL30.glBindVertexArray(vaoId);
 
         final int STRIDE = 6 * Float.BYTES;
 
-        GL20.glEnableVertexAttribArray(0);
-        GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, STRIDE, 0L);
+        GL30.glEnableVertexAttribArray(0);
+        GL30.glVertexAttribPointer(0, 3, GL30.GL_FLOAT, false, STRIDE, 0L);
 
-        GL20.glEnableVertexAttribArray(1);
-        GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, STRIDE, 3L * Float.BYTES);
+        GL30.glEnableVertexAttribArray(1);
+        GL30.glVertexAttribPointer(1, 2, GL30.GL_FLOAT, false, STRIDE, 3L * Float.BYTES);
 
-        GL20.glEnableVertexAttribArray(2);
-        GL20.glVertexAttribPointer(2, 1, GL11.GL_FLOAT, false, STRIDE, 5L * Float.BYTES);
+        GL30.glEnableVertexAttribArray(2);
+        GL30.glVertexAttribPointer(2, 1, GL30.GL_FLOAT, false, STRIDE, 5L * Float.BYTES);
 
         GL30.glBindVertexArray(0);
     }
@@ -140,13 +139,13 @@ public class Renderer {
     private void cacheUniforms() {
         shader.use();
         int program = shader.getProgramId();
-        uProjection   = GL20.glGetUniformLocation(program, "projection");
-        uView         = GL20.glGetUniformLocation(program, "view");
-        uModel        = GL20.glGetUniformLocation(program, "model");
-        uBlockTexture = GL20.glGetUniformLocation(program, "blockTexture");
-        uSunlight     = GL20.glGetUniformLocation(program, "uSunlight");
-        if (uBlockTexture >= 0) GL20.glUniform1i(uBlockTexture, 0);
-        GL20.glUseProgram(0);
+        uProjection   = GL30.glGetUniformLocation(program, "projection");
+        uView         = GL30.glGetUniformLocation(program, "view");
+        uModel        = GL30.glGetUniformLocation(program, "model");
+        uBlockTexture = GL30.glGetUniformLocation(program, "blockTexture");
+        uSunlight     = GL30.glGetUniformLocation(program, "uSunlight");
+        if (uBlockTexture >= 0) GL30.glUniform1i(uBlockTexture, 0);
+        GL30.glUseProgram(0);
     }
 
     private void setupSkybox() {
@@ -220,44 +219,44 @@ public class Renderer {
 
         skyShader = new ShaderProgram(vsrc, fsrc);
         int prog = skyShader.getProgramId();
-        uSkyProjection = GL20.glGetUniformLocation(prog, "projection");
-        uSkyView       = GL20.glGetUniformLocation(prog, "view");
-        uSkyTime       = GL20.glGetUniformLocation(prog, "uTime");
+        uSkyProjection = GL30.glGetUniformLocation(prog, "projection");
+        uSkyView       = GL30.glGetUniformLocation(prog, "view");
+        uSkyTime       = GL30.glGetUniformLocation(prog, "uTime");
 
-        uSkySunDir  = GL20.glGetUniformLocation(prog, "uSunDir");
-        uSkyMoonDir = GL20.glGetUniformLocation(prog, "uMoonDir");
-        uSkyStars   = GL20.glGetUniformLocation(prog, "uStars");
+        uSkySunDir  = GL30.glGetUniformLocation(prog, "uSunDir");
+        uSkyMoonDir = GL30.glGetUniformLocation(prog, "uMoonDir");
+        uSkyStars   = GL30.glGetUniformLocation(prog, "uStars");
 
         skyVao = GL30.glGenVertexArrays();
-        skyVbo = GL15.glGenBuffers();
+        skyVbo = GL30.glGenBuffers();
 
         GL30.glBindVertexArray(skyVao);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, skyVbo);
+        GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, skyVbo);
 
         FloatBuffer buf = MemoryUtil.memAllocFloat(verts.length);
         buf.put(verts).flip();
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, buf, GL15.GL_STATIC_DRAW);
+        GL30.glBufferData(GL30.GL_ARRAY_BUFFER, buf, GL30.GL_STATIC_DRAW);
         MemoryUtil.memFree(buf);
 
-        GL20.glEnableVertexAttribArray(0);
-        GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, 3 * Float.BYTES, 0L);
+        GL30.glEnableVertexAttribArray(0);
+        GL30.glVertexAttribPointer(0, 3, GL30.GL_FLOAT, false, 3 * Float.BYTES, 0L);
 
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
     }
 
     private void setupUnderwaterOverlay() {
         float[] verts = { -1f, -1f,   3f, -1f,   -1f, 3f };
         overlayVao = GL30.glGenVertexArrays();
-        overlayVbo = GL15.glGenBuffers();
+        overlayVbo = GL30.glGenBuffers();
         GL30.glBindVertexArray(overlayVao);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, overlayVbo);
+        GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, overlayVbo);
         java.nio.FloatBuffer fb = org.lwjgl.BufferUtils.createFloatBuffer(verts.length);
         fb.put(verts).flip();
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, fb, GL15.GL_STATIC_DRAW);
-        GL20.glEnableVertexAttribArray(0);
-        GL20.glVertexAttribPointer(0, 2, GL11.GL_FLOAT, false, 2 * Float.BYTES, 0L);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GL30.glBufferData(GL30.GL_ARRAY_BUFFER, fb, GL30.GL_STATIC_DRAW);
+        GL30.glEnableVertexAttribArray(0);
+        GL30.glVertexAttribPointer(0, 2, GL30.GL_FLOAT, false, 2 * Float.BYTES, 0L);
+        GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
         GL30.glBindVertexArray(0);
 
         String v =
@@ -274,14 +273,26 @@ public class Renderer {
 
         overlayShader = new ShaderProgram(v, f);
         int prog = overlayShader.getProgramId();
-        uOverlayColor    = GL20.glGetUniformLocation(prog, "uColor");
-        uOverlayStrength = GL20.glGetUniformLocation(prog, "uStrength");
+        uOverlayColor    = GL30.glGetUniformLocation(prog, "uColor");
+        uOverlayStrength = GL30.glGetUniformLocation(prog, "uStrength");
     }
 
-    public void render(float delta, InputHandler input) {
-        this.delta = delta;
-        timeOfDay01 = (timeOfDay01 + (delta / DAY_LENGTH_SEC)) % 1.0f;
+    public void tick(float dt) {
+        timeOfDay01 = (timeOfDay01 + (dt / DAY_LENGTH_SEC)) % 1.0f;
+        
+        for (BlockType type : BlockType.values()) {
+            if (type != null) {
+                Texture[] textures = {type.back, type.bottom, type.front, type.left, type.right, type.top};
+                for (Texture tex : textures) {
+                    if (tex instanceof AnimatedTexture) {
+                        ((AnimatedTexture) tex).update(dt);
+                    }
+                }
+            }
+        }
+    }
 
+    public void render(InputHandler input) {
         int cameraChunkX = Math.floorDiv((int) camera.getPosition().x, Chunk.SIZE);
         int cameraChunkZ = Math.floorDiv((int) camera.getPosition().z, Chunk.SIZE);
         int renderRadius = camera.getRenderDistance();
@@ -289,23 +300,23 @@ public class Renderer {
         world.ensureChunksAround(cameraChunkX, cameraChunkZ, renderRadius);
         world.unloadFarChunks(cameraChunkX, cameraChunkZ, renderRadius);
 
-        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        GL30.glClear(GL30.GL_COLOR_BUFFER_BIT | GL30.GL_DEPTH_BUFFER_BIT);
         shader.use();
 
         Matrix4f projection = camera.getProjectionMatrix();
         Matrix4f view = camera.getViewMatrix();
 
         matBuffer.clear(); projection.get(matBuffer);
-        GL20.glUniformMatrix4fv(uProjection, false, matBuffer);
+        GL30.glUniformMatrix4fv(uProjection, false, matBuffer);
 
         matBuffer.clear(); view.get(matBuffer);
-        GL20.glUniformMatrix4fv(uView, false, matBuffer);
+        GL30.glUniformMatrix4fv(uView, false, matBuffer);
 
         matBuffer.clear(); new Matrix4f().identity().get(matBuffer);
-        GL20.glUniformMatrix4fv(uModel, false, matBuffer);
+        GL30.glUniformMatrix4fv(uModel, false, matBuffer);
 
         float sun = dayAmount(timeOfDay01);
-        if (uSunlight >= 0) GL20.glUniform1f(uSunlight, sun);
+        if (uSunlight >= 0) GL30.glUniform1f(uSunlight, sun);
 
         GL30.glBindVertexArray(vaoId);
 
@@ -365,7 +376,7 @@ public class Renderer {
         }
 
         GL30.glBindVertexArray(0);
-        GL20.glUseProgram(0);
+        GL30.glUseProgram(0);
 
         removeMesh(cameraChunkX, cameraChunkZ, renderRadius + 2);
         drawSkybox();
@@ -382,7 +393,7 @@ public class Renderer {
                 final float y0 = h.y,   y1 = h.y + 1f;
                 final float z0 = h.z,   z1 = h.z + 1f;
 
-                final float EPS = 0.002f; // push along normal to avoid z-fighting
+                final float EPS = 0.002f;
                 float[][] corners = null;
 
                 if (h.nx != 0) {
@@ -428,10 +439,10 @@ public class Renderer {
         int lx = Math.floorMod(x, Chunk.SIZE);
         int lz = Math.floorMod(z, Chunk.SIZE);
 
-        boolean west  = (lx == 0);
-        boolean east  = (lx == Chunk.SIZE - 1);
         boolean north = (lz == 0);
+        boolean east  = (lx == Chunk.SIZE - 1);
         boolean south = (lz == Chunk.SIZE - 1);
+        boolean west  = (lx == 0);
 
         if (west)  invalidateChunk(chunkX - 1, chunkZ);
         if (east)  invalidateChunk(chunkX + 1, chunkZ);
@@ -453,11 +464,11 @@ public class Renderer {
 
     public void cleanup() {
         if (skyShader != null) skyShader.delete();
-        if (skyVbo != 0) GL15.glDeleteBuffers(skyVbo);
+        if (skyVbo != 0) GL30.glDeleteBuffers(skyVbo);
         if (skyVao != 0) GL30.glDeleteVertexArrays(skyVao);
 
         if (overlayShader != null) overlayShader.delete();
-        if (overlayVbo != 0) GL15.glDeleteBuffers(overlayVbo);
+        if (overlayVbo != 0) GL30.glDeleteBuffers(overlayVbo);
         if (overlayVao != 0) GL30.glDeleteVertexArrays(overlayVao);
 
         shader.delete();
@@ -633,13 +644,13 @@ public class Renderer {
             float[] verts = e.getValue();
             if (verts.length == 0) continue;
 
-            int vbo = GL15.glGenBuffers();
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+            int vbo = GL30.glGenBuffers();
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vbo);
             FloatBuffer buf = MemoryUtil.memAllocFloat(verts.length);
             buf.put(verts).flip();
-            GL15.glBufferData(GL15.GL_ARRAY_BUFFER, buf, GL15.GL_STATIC_DRAW);
+            GL30.glBufferData(GL30.GL_ARRAY_BUFFER, buf, GL30.GL_STATIC_DRAW);
             MemoryUtil.memFree(buf);
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
 
             mesh.addOpaque(tex, vbo, verts.length / 6);
         }
@@ -649,13 +660,13 @@ public class Renderer {
             float[] verts = e.getValue();
             if (verts.length == 0) continue;
 
-            int vbo = GL15.glGenBuffers();
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
+            int vbo = GL30.glGenBuffers();
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vbo);
             FloatBuffer buf = MemoryUtil.memAllocFloat(verts.length);
             buf.put(e.getValue()).flip();
-            GL15.glBufferData(GL15.GL_ARRAY_BUFFER, buf, GL15.GL_STATIC_DRAW);
+            GL30.glBufferData(GL30.GL_ARRAY_BUFFER, buf, GL30.GL_STATIC_DRAW);
             MemoryUtil.memFree(buf);
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
 
             mesh.addTranslucent(tex, vbo, verts.length / 6);
         }
@@ -766,37 +777,37 @@ public class Renderer {
         Matrix4f proj = camera.getProjectionMatrix();
         Matrix4f view = camera.getViewMatrix();
 
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthMask(false);
-        GL11.glDepthFunc(GL11.GL_LEQUAL);
+        GL30.glEnable(GL30.GL_DEPTH_TEST);
+        GL30.glDepthMask(false);
+        GL30.glDepthFunc(GL30.GL_LEQUAL);
 
         skyShader.use();
 
         matBuffer.clear(); proj.get(matBuffer);
-        GL20.glUniformMatrix4fv(uSkyProjection, false, matBuffer);
+        GL30.glUniformMatrix4fv(uSkyProjection, false, matBuffer);
 
         matBuffer.clear(); view.get(matBuffer);
-        GL20.glUniformMatrix4fv(uSkyView, false, matBuffer);
+        GL30.glUniformMatrix4fv(uSkyView, false, matBuffer);
 
-        GL20.glUniform1f(uSkyTime, timeOfDay01);
+        GL30.glUniform1f(uSkyTime, timeOfDay01);
 
         double ang = 2.0 * Math.PI * (timeOfDay01 - 0);
         float sy = (float) Math.sin(ang);
         float sz = (float) Math.cos(ang);
 
-        GL20.glUniform3f(uSkySunDir,  0f, sy, sz);
-        GL20.glUniform3f(uSkyMoonDir, 0f, -sy, -sz);
+        GL30.glUniform3f(uSkySunDir,  0f, sy, sz);
+        GL30.glUniform3f(uSkyMoonDir, 0f, -sy, -sz);
 
-        GL20.glUniform1f(uSkyStars, 5.0f);
+        GL30.glUniform1f(uSkyStars, 5.0f);
 
         GL30.glBindVertexArray(skyVao);
-        GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 36);
+        GL30.glDrawArrays(GL30.GL_TRIANGLES, 0, 36);
         GL30.glBindVertexArray(0);
 
-        GL20.glUseProgram(0);
+        GL30.glUseProgram(0);
 
-        GL11.glDepthFunc(GL11.GL_LESS);
-        GL11.glDepthMask(true);
+        GL30.glDepthFunc(GL30.GL_LESS);
+        GL30.glDepthMask(true);
     }
 
     private static final class ChunkMesh {
@@ -817,39 +828,41 @@ public class Renderer {
         }
 
         private void bindForDraw(Texture tex, int yOffLoc, int offLoc, int scaleLoc) {
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        	GL30.glActiveTexture(GL30.GL_TEXTURE0);
             if (tex instanceof AnimatedTexture) {
-                ((AnimatedTexture) tex).update(delta);
+                AnimatedTexture animTex = (AnimatedTexture) tex;
                 tex.bind();
-                if (yOffLoc >= 0) GL20.glUniform1f(yOffLoc, -0.1f);
+                if (offLoc   >= 0) GL30.glUniform1f(offLoc,   animTex.getFrameOffset());
+                if (scaleLoc >= 0) GL30.glUniform1f(scaleLoc, animTex.getFrameScale());
+                if (yOffLoc >= 0) GL30.glUniform1f(yOffLoc, -0.1f);
             } else {
                 tex.bind();
-                if (offLoc   >= 0) GL20.glUniform1f(offLoc,   0f);
-                if (scaleLoc >= 0) GL20.glUniform1f(scaleLoc, 1f);
-                if (yOffLoc  >= 0) GL20.glUniform1f(yOffLoc,  0f);
+                if (offLoc   >= 0) GL30.glUniform1f(offLoc,   0f);
+                if (scaleLoc >= 0) GL30.glUniform1f(scaleLoc, 1f);
+                if (yOffLoc  >= 0) GL30.glUniform1f(yOffLoc,  0f);
             }
         }
 
         private void enableAttribs() {
-            GL20.glEnableVertexAttribArray(0);
-            GL20.glEnableVertexAttribArray(1);
-            GL20.glEnableVertexAttribArray(2);
+        	GL30.glEnableVertexAttribArray(0);
+        	GL30.glEnableVertexAttribArray(1);
+        	GL30.glEnableVertexAttribArray(2);
         }
         private void disableAttribs() {
-            GL20.glDisableVertexAttribArray(2);
-            GL20.glDisableVertexAttribArray(1);
-            GL20.glDisableVertexAttribArray(0);
+        	GL30.glDisableVertexAttribArray(2);
+        	GL30.glDisableVertexAttribArray(1);
+        	GL30.glDisableVertexAttribArray(0);
         }
 
         void drawOpaque() {
             enableAttribs();
 
-            int prog = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+            int prog = GL30.glGetInteger(GL30.GL_CURRENT_PROGRAM);
             int offLoc = -1, scaleLoc = -1, yOffLoc = -1;
             if (prog != 0) {
-                offLoc   = GL20.glGetUniformLocation(prog, "uFrameOffset");
-                scaleLoc = GL20.glGetUniformLocation(prog, "uFrameScale");
-                yOffLoc  = GL20.glGetUniformLocation(prog, "yOffset");
+                offLoc   = GL30.glGetUniformLocation(prog, "uFrameOffset");
+                scaleLoc = GL30.glGetUniformLocation(prog, "uFrameScale");
+                yOffLoc  = GL30.glGetUniformLocation(prog, "yOffset");
             }
 
             for (Map.Entry<Texture, Integer> e : vboOpaque.entrySet()) {
@@ -859,31 +872,31 @@ public class Renderer {
 
                 bindForDraw(tex, yOffLoc, offLoc, scaleLoc);
 
-                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vboId);
-                GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, STRIDE, 0L);
-                GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, STRIDE, 3L * Float.BYTES);
-                GL20.glVertexAttribPointer(2, 1, GL11.GL_FLOAT, false, STRIDE, 5L * Float.BYTES);
-                GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, count);
+                GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vboId);
+                GL30.glVertexAttribPointer(0, 3, GL30.GL_FLOAT, false, STRIDE, 0L);
+                GL30.glVertexAttribPointer(1, 2, GL30.GL_FLOAT, false, STRIDE, 3L * Float.BYTES);
+                GL30.glVertexAttribPointer(2, 1, GL30.GL_FLOAT, false, STRIDE, 5L * Float.BYTES);
+                GL30.glDrawArrays(GL30.GL_TRIANGLES, 0, count);
             }
 
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
             disableAttribs();
         }
 
         void drawTranslucent() {
             // blend like before; depth test ON, writes OFF
-            GL11.glEnable(GL11.GL_BLEND);
-            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-            GL11.glDepthMask(false);
+        	GL30.glEnable(GL30.GL_BLEND);
+        	GL30.glBlendFunc(GL30.GL_SRC_ALPHA, GL30.GL_ONE_MINUS_SRC_ALPHA);
+        	GL30.glDepthMask(false);
 
             enableAttribs();
 
-            int prog = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+            int prog = GL30.glGetInteger(GL30.GL_CURRENT_PROGRAM);
             int offLoc = -1, scaleLoc = -1, yOffLoc = -1;
             if (prog != 0) {
-                offLoc   = GL20.glGetUniformLocation(prog, "uFrameOffset");
-                scaleLoc = GL20.glGetUniformLocation(prog, "uFrameScale");
-                yOffLoc  = GL20.glGetUniformLocation(prog, "yOffset");
+                offLoc   = GL30.glGetUniformLocation(prog, "uFrameOffset");
+                scaleLoc = GL30.glGetUniformLocation(prog, "uFrameScale");
+                yOffLoc  = GL30.glGetUniformLocation(prog, "yOffset");
             }
 
             for (Map.Entry<Texture, Integer> e : vboTrans.entrySet()) {
@@ -893,23 +906,23 @@ public class Renderer {
 
                 bindForDraw(tex, yOffLoc, offLoc, scaleLoc);
 
-                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vboId);
-                GL20.glVertexAttribPointer(0, 3, GL11.GL_FLOAT, false, STRIDE, 0L);
-                GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, STRIDE, 3L * Float.BYTES);
-                GL20.glVertexAttribPointer(2, 1, GL11.GL_FLOAT, false, STRIDE, 5L * Float.BYTES);
-                GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, count);
+                GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vboId);
+                GL30.glVertexAttribPointer(0, 3, GL30.GL_FLOAT, false, STRIDE, 0L);
+                GL30.glVertexAttribPointer(1, 2, GL30.GL_FLOAT, false, STRIDE, 3L * Float.BYTES);
+                GL30.glVertexAttribPointer(2, 1, GL30.GL_FLOAT, false, STRIDE, 5L * Float.BYTES);
+                GL30.glDrawArrays(GL30.GL_TRIANGLES, 0, count);
             }
 
             // restore state
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
             disableAttribs();
-            GL11.glDepthMask(true);
-            GL11.glDisable(GL11.GL_BLEND);
+            GL30.glDepthMask(true);
+            GL30.glDisable(GL30.GL_BLEND);
         }
 
         void delete() {
-            for (int vbo : vboOpaque.values()) GL15.glDeleteBuffers(vbo);
-            for (int vbo : vboTrans.values())  GL15.glDeleteBuffers(vbo);
+            for (int vbo : vboOpaque.values()) GL30.glDeleteBuffers(vbo);
+            for (int vbo : vboTrans.values())  GL30.glDeleteBuffers(vbo);
             vboOpaque.clear(); vboTrans.clear();
             cntOpaque.clear(); cntTrans.clear();
         }
@@ -983,20 +996,20 @@ public class Renderer {
     private void drawUnderwaterOverlay(float strength) {
         if (strength <= 0f) return;
 
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL30.glDisable(GL30.GL_DEPTH_TEST);
+        GL30.glEnable(GL30.GL_BLEND);
+        GL30.glBlendFunc(GL30.GL_SRC_ALPHA, GL30.GL_ONE_MINUS_SRC_ALPHA);
 
         overlayShader.use();
-        GL20.glUniform3f(uOverlayColor, 0.12f, 0.38f, 0.65f); // tint color
-        GL20.glUniform1f(uOverlayStrength, Math.min(strength, 0.8f));
+        GL30.glUniform3f(uOverlayColor, 0.12f, 0.38f, 0.65f);
+        GL30.glUniform1f(uOverlayStrength, Math.min(strength, 0.8f));
 
         GL30.glBindVertexArray(overlayVao);
-        GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 3);
+        GL30.glDrawArrays(GL30.GL_TRIANGLES, 0, 3);
         GL30.glBindVertexArray(0);
-        GL20.glUseProgram(0);
+        GL30.glUseProgram(0);
 
-        GL11.glDisable(GL11.GL_BLEND);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL30.glDisable(GL30.GL_BLEND);
+        GL30.glEnable(GL30.GL_DEPTH_TEST);
     }
 }

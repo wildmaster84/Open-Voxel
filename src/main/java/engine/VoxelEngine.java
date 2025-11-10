@@ -26,9 +26,16 @@ public class VoxelEngine {
 	private InputHandler input;
 	private PhysicsEngine physics;
 	private boolean running = true;
+	int vsync = 0;
+	int renderDistance = 4;
 	private final String version = (DemoGame.class.getPackage().getImplementationVersion() == null ? "0.0.0-Debug"
-			: getClass().getPackage().getImplementationVersion());;
+			: DemoGame.class.getPackage().getImplementationVersion());;
 	private GameEventManager eventManager;
+	
+	public VoxelEngine(int vsync, int renderDistance) {
+		this.vsync = vsync;
+		this.renderDistance = renderDistance;
+	}
 
 	public void start() {
 		initGLFW();
@@ -49,41 +56,60 @@ public class VoxelEngine {
 		}
 		GLFW.glfwMakeContextCurrent(window);
 		GL.createCapabilities();
-		GLFW.glfwSwapInterval(1);
+		GLFW.glfwSwapInterval(this.vsync);
 	}
 
 	private void initEngine() {
 		eventManager = new GameEventManager();
 		world = new World(2025L);
-		camera = new Camera(WIDTH, HEIGHT, 95, 10, world);
+		camera = new Camera(WIDTH, HEIGHT, 95, this.renderDistance, world);
 		physics = new PhysicsEngine(world, camera);
 		input = new InputHandler(window, camera, physics, this);
 		renderer = new Renderer(world, camera);
 	}
 
 	private void loop() {
+		final float TICK_RATE = 60.0f; 
+		final float TICK_DT = 1.0f / TICK_RATE;
+		final int MAX_TICKS_PER_FRAME = 5;
+		
 		double lastTime = GLFW.glfwGetTime();
+		float accumulator = 0f;
 		int frames = 0;
 		double lastFpsTime = lastTime;
+		
 		while (!GLFW.glfwWindowShouldClose(window) && running) {
 			double now = GLFW.glfwGetTime();
-			float delta = (float) (now - lastTime);
+			float frameTime = (float) (now - lastTime);
 			lastTime = now;
-			if (delta > 0.1f)
-				delta = 0.1f;
-			input.pollEvents(delta);
-			physics.update(delta, input.isJumpPressed(), input.isCrouchPressed());
-			renderer.render(delta, input);
+			
+			if (frameTime > 0.25f)
+				frameTime = 0.25f;
+			
+			accumulator += frameTime;
+			
+			input.sampleInput();
+			
+			int ticksThisFrame = 0;
+			while (accumulator >= TICK_DT && ticksThisFrame < MAX_TICKS_PER_FRAME) {
+				input.applyMovement(TICK_DT);
+				physics.tick(TICK_DT, input.isJumpPressed(), input.isCrouchPressed());
+				renderer.tick(TICK_DT);
+				accumulator -= TICK_DT;
+				ticksThisFrame++;
+			}
+			
+			renderer.render(input);
+			
 			GLFW.glfwSwapBuffers(window);
 			GLFW.glfwPollEvents();
+			
 			frames++;
 			if (now - lastFpsTime >= 1.0) {
 				Vector3f pos = camera.getPosition();
-				String title = String.format("Open-Voxel Engine - %s | FPS: %d | Pos: (%d, %d, %d)", version, frames,
-						(int) pos.x, (int) pos.y, (int) pos.z);
-				GLFW.glfwSetWindowTitle(window, title);
-				String debugString = String.format("FPS: %s | X: %s Y: %s Z: %s | Chunks: %s", (int) frames,
+				String title = String.format("Open-Voxel Engine - %s | FPS: %d | Pos: (%d, %d, %d) | Chunks: %s", version, frames,
 						(int) pos.x, (int) pos.y, (int) pos.z, world.getChunks().entrySet().size());
+				GLFW.glfwSetWindowTitle(window, title);
 				frames = 0;
 				lastFpsTime = now;
 			}
@@ -117,7 +143,4 @@ public class VoxelEngine {
 		});
 	}
 
-	public static void main(String[] args) {
-		new VoxelEngine().start();
-	}
 }
