@@ -2,11 +2,13 @@ package engine.world;
 
 import java.io.Serializable;
 
+import engine.world.block.BlockType;
+
 public class Chunk implements Serializable {
     public static final int SIZE = 16;
     public static final int HEIGHT = 512;
     private int chunkX, chunkZ;
-    private final AbstractBlock[][][] blocks = new AbstractBlock[SIZE][HEIGHT][SIZE];
+    private final int[][][] blocks = new int[SIZE][HEIGHT][SIZE];
 
     
 
@@ -16,15 +18,15 @@ public class Chunk implements Serializable {
         for (int x = 0; x < SIZE; x++)
             for (int y = 0; y < HEIGHT; y++)
                 for (int z = 0; z < SIZE; z++)
-                    blocks[x][y][z] = new AbstractBlock(BlockType.AIR);
+                    blocks[x][y][z] = BlockType.AIR.getId();
     }
 
     public AbstractBlock getBlock(int x, int y, int z) {
-        return blocks[x][y][z];
+        return new AbstractBlock(BlockType.fromId(blocks[x][y][z]));
     }
 
     public void setBlock(int x, int y, int z, AbstractBlock block) {
-        blocks[x][y][z] = block;
+        blocks[x][y][z] = block.getType().getId();
     }
     
     public int getChunkX() {

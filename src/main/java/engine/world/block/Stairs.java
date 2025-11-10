@@ -2,7 +2,6 @@ package engine.world.block;
 
 import engine.physics.PhysicsEngine.AABB;
 import engine.world.AbstractBlock;
-import engine.world.BlockType;
 
 import java.util.List;
 
@@ -25,11 +24,11 @@ public class Stairs extends AbstractBlock {
         final float y1b = upsideDown ? 0.5f : 1.0f;
 
         float x0 = 0f, x1 = 1f, z0 = 0f, z1 = 1f;
-        switch (getFacing()) { // Facing.NORTH/SOUTH/EAST/WEST
-            case SOUTH: /* +Z */ z0 = 0.5f; z1 = 1f; break;
-            case NORTH: /* -Z */ z0 = 0.0f; z1 = 0.5f; break;
-            case EAST:  /* +X */ x0 = 0.5f; x1 = 1f; break;
-            case WEST:  /* -X */ x0 = 0.0f; x1 = 0.5f; break;
+        switch (getFacing()) {
+            case SOUTH: z0 = 0.5f; z1 = 1f; break;
+            case NORTH: z0 = 0.0f; z1 = 0.5f; break;
+            case EAST:  x0 = 0.5f; x1 = 1f; break;
+            case WEST:  x0 = 0.0f; x1 = 0.5f; break;
         }
 
         AABB A = new AABB(0f, y0a, 0f, 1f, y1a, 1f);

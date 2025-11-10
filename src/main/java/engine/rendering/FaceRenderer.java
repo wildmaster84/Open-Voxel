@@ -1,8 +1,29 @@
 package engine.rendering;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import engine.world.AbstractBlock;
+import engine.world.World;
 import engine.world.AbstractBlock.Facing;
+import engine.world.block.BlockType;
 
 public class FaceRenderer {
+	public static final int[][] UAX = {
+	    { 1, 0, 0}, { 1, 0, 0}, { 1, 0, 0}, { 1, 0, 0}, { 0, 0, 1}, { 0, 0, 1}
+	};
+	public static final int[][] VAX = {
+	    { 0, 0, 1}, { 0, 0, 1}, { 0, 1, 0}, { 0, 1, 0}, { 0, 1, 0}, { 0, 1, 0}
+	};
+	public static final int[][] CORNER_SIGNS = {
+	    {-1,-1,  1,-1,  1, 1, -1, 1},
+	    {-1,-1,  1,-1,  1, 1, -1, 1},
+	    {-1,-1,  1,-1,  1, 1, -1, 1},
+	    {-1,-1,  1,-1,  1, 1, -1, 1},
+	    {-1,-1,  1,-1,  1, 1, -1, 1},
+	    {-1,-1,  1,-1,  1, 1, -1, 1}
+	};
+	
 	public enum Faces {
 	    TOP,
 	    BOTTOM,
@@ -71,7 +92,6 @@ public class FaceRenderer {
         }
     }
 
-    // Write one quad directly into a 30-float array (two triangles), given 4 corners + UVs.
     private static float[] writeQuad(
             float x0,float y0,float z0, float u0,float v0,
             float x1,float y1,float z1, float u1,float v1,
@@ -80,24 +100,22 @@ public class FaceRenderer {
     ) {
         float[] o = new float[30];
         int i=0;
-        // tri 0: 0,1,2
         o[i++]=x0; o[i++]=y0; o[i++]=z0; o[i++]=u0; o[i++]=v0;
         o[i++]=x1; o[i++]=y1; o[i++]=z1; o[i++]=u1; o[i++]=v1;
         o[i++]=x2; o[i++]=y2; o[i++]=z2; o[i++]=u2; o[i++]=v2;
-        // tri 1: 0,2,3
         o[i++]=x0; o[i++]=y0; o[i++]=z0; o[i++]=u0; o[i++]=v0;
         o[i++]=x2; o[i++]=y2; o[i++]=z2; o[i++]=u2; o[i++]=v2;
         o[i++]=x3; o[i++]=y3; o[i++]=z3; o[i++]=u3; o[i++]=v3;
         return o;
     }
 
-    public static java.util.List<float[]> slabQuads(boolean topHalf) {
+    public static List<float[]> slabQuads(boolean topHalf) {
         float y0 = topHalf ? 0.5f : 0.0f;
         float y1 = y0 + 0.5f;
 
-        java.util.ArrayList<float[]> quads = new java.util.ArrayList<>(6);
+        ArrayList<float[]> quads = new ArrayList<>(6);
 
-        // Top (uv = xz) — use full 0..1 in Z
+        // Top
         quads.add(writeQuad(
             0f, y1, 1f,  0f, 1f,
             1f, y1, 1f,  1f, 1f,
@@ -105,7 +123,7 @@ public class FaceRenderer {
             0f, y1, 0f,  0f, 0f
         ));
 
-        // Bottom (uv = xz)
+        // Bottom
         quads.add(writeQuad(
             0f, y0, 0f,  0f, 0f,
             1f, y0, 0f,  1f, 0f,
@@ -113,28 +131,28 @@ public class FaceRenderer {
             0f, y0, 1f,  0f, 1f
         ));
 
-        // -X side (uv = zy)
+        // -X side
         quads.add(writeQuad(
             0f, y0, 0f,  0f, y0,
             0f, y0, 1f,  1f, y0,
             0f, y1, 1f,  1f, y1,
             0f, y1, 0f,  0f, y1
         ));
-        // +X side (uv = zy)
+        // +X side
         quads.add(writeQuad(
             1f, y0, 1f,  1f, y0,
             1f, y0, 0f,  0f, y0,
             1f, y1, 0f,  0f, y1,
             1f, y1, 1f,  1f, y1
         ));
-        // -Z side (uv = xy)
+        // -Z side
         quads.add(writeQuad(
             1f, y0, 0f,  1f, y0,
             0f, y0, 0f,  0f, y0,
             0f, y1, 0f,  0f, y1,
             1f, y1, 0f,  1f, y1
         ));
-        // +Z side (uv = xy)
+        // +Z side
         quads.add(writeQuad(
             0f, y0, 1f,  0f, y0,
             1f, y0, 1f,  1f, y0,
@@ -146,51 +164,50 @@ public class FaceRenderer {
     }
 
     
-    public static java.util.List<float[]> stairQuads(Facing facing, boolean upsideDown) {
-        final float y0a = upsideDown ? 0.5f : 0.0f; // lower part start
-        final float y1a = upsideDown ? 1.0f : 0.5f; // lower part end
-        final float y0b = upsideDown ? 0.0f : 0.5f; // upper part start (lower when upsideDown)
-        final float y1b = upsideDown ? 0.5f : 1.0f; // upper part end
+    public static List<float[]> stairQuads(Facing facing, boolean upsideDown) {
+        final float y0a = upsideDown ? 0.5f : 0.0f;
+        final float y1a = upsideDown ? 1.0f : 0.5f;
+        final float y0b = upsideDown ? 0.0f : 0.5f;
+        final float y1b = upsideDown ? 0.5f : 1.0f;
 
-        java.util.ArrayList<float[]> quads = new java.util.ArrayList<>(13);
+        ArrayList<float[]> quads = new ArrayList<>(13);
 
-        // ---------- Piece A: full XZ, height 0.5 ----------
-        // Top of A (uv = xz)
+        // Top of A
         quads.add(writeQuad(
             0f,y1a,1f, 0f,1f,
             1f,y1a,1f, 1f,1f,
             1f,y1a,0f, 1f,0f,
             0f,y1a,0f, 0f,0f
         ));
-        // Bottom of A (uv = xz)
+        // Bottom of A
         quads.add(writeQuad(
             0f,y0a,0f, 0f,0f,
             1f,y0a,0f, 1f,0f,
             1f,y0a,1f, 1f,1f,
             0f,y0a,1f, 0f,1f
         ));
-        // -X side of A (uv = zy)
+        // -X side of A
         quads.add(writeQuad(
             0f,y0a,0f, 0f,y0a,
             0f,y0a,1f, 1f,y0a,
             0f,y1a,1f, 1f,y1a,
             0f,y1a,0f, 0f,y1a
         ));
-        // +X side of A (uv = zy)
+        // +X side of A
         quads.add(writeQuad(
             1f,y0a,1f, 1f,y0a,
             1f,y0a,0f, 0f,y0a,
             1f,y1a,0f, 0f,y1a,
             1f,y1a,1f, 1f,y1a
         ));
-        // -Z side of A (uv = xy)
+        // -Z side of A
         quads.add(writeQuad(
             1f,y0a,0f, 1f,y0a,
             0f,y0a,0f, 0f,y0a,
             0f,y1a,0f, 0f,y1a,
             1f,y1a,0f, 1f,y1a
         ));
-        // +Z side of A (uv = xy)
+        // +Z side of A
         quads.add(writeQuad(
             0f,y0a,1f, 0f,y0a,
             1f,y0a,1f, 1f,y0a,
@@ -198,7 +215,6 @@ public class FaceRenderer {
             0f,y1a,1f, 0f,y1a
         ));
 
-        // ---------- Piece B: back half ----------
         float x0=0f, x1=1f, z0=0f, z1=1f;
         switch (facing) {
             case SOUTH: /* +Z */ z0 = 0.5f; z1 = 1f; break;
@@ -207,7 +223,7 @@ public class FaceRenderer {
             case WEST: /* -X */ x0 = 0.0f; x1 = 0.5f; break;
         }
 
-        // Top of B (uv = xz)
+        // Top of B
         quads.add(writeQuad(
             x0,y1b,z1, x0,z1,
             x1,y1b,z1, x1,z1,
@@ -215,9 +231,7 @@ public class FaceRenderer {
             x0,y1b,z0, x0,z0
         ));
 
-        // Bottom of B: 
-        // - Skip for normal (not upsideDown) to avoid coplanar z-fight at y = 0.5 with A's top.
-        // - Emit for upsideDown so the very bottom (y = 0.0) is visible.
+        // Bottom of B
         if (upsideDown) {
             quads.add(writeQuad(
                 x0,y0b,z0, x0,z0,
@@ -227,29 +241,28 @@ public class FaceRenderer {
             ));
         }
 
-        // Vertical sides of B (always emit; neighbor culling hides internals):
-        // -X (uv = zy)
+        // -X
         quads.add(writeQuad(
             x0,y0b,z0, z0,y0b,
             x0,y0b,z1, z1,y0b,
             x0,y1b,z1, z1,y1b,
             x0,y1b,z0, z0,y1b
         ));
-        // +X (uv = zy)
+        // +X
         quads.add(writeQuad(
             x1,y0b,z1, z1,y0b,
             x1,y0b,z0, z0,y0b,
             x1,y1b,z0, z0,y1b,
             x1,y1b,z1, z1,y1b
         ));
-        // -Z (uv = xy)
+        // -Z
         quads.add(writeQuad(
             x1,y0b,z0, x1,y0b,
             x0,y0b,z0, x0,y0b,
             x0,y1b,z0, x0,y1b,
             x1,y1b,z0, x1,y1b
         ));
-        // +Z (uv = xy)
+        // +Z
         quads.add(writeQuad(
             x0,y0b,z1, x0,y0b,
             x1,y0b,z1, x1,y0b,
@@ -258,6 +271,34 @@ public class FaceRenderer {
         ));
 
         return quads;
+    }
+    
+    public static float cornerAO(World world, int gx, int gy, int gz, int face, int cornerIndex) {
+        int ux = UAX[face][0],  uy = UAX[face][1],  uz = UAX[face][2];
+        int vx = VAX[face][0],  vy = VAX[face][1],  vz = VAX[face][2];
+
+        int uSign = CORNER_SIGNS[face][cornerIndex*2 + 0];
+        int vSign = CORNER_SIGNS[face][cornerIndex*2 + 1];
+
+        int sx1x = gx + uSign*ux, sx1y = gy + uSign*uy, sx1z = gz + uSign*uz;
+        int sx2x = gx + vSign*vx, sx2y = gy + vSign*vy, sx2z = gz + vSign*vz;
+        int scx  = gx + uSign*ux + vSign*vx, scy  = gy + uSign*uy + vSign*vy, scz  = gz + uSign*uz + vSign*vz;
+
+        boolean s1 = isSolid(world.getBlock(sx1x, sx1y, sx1z));
+        boolean s2 = isSolid(world.getBlock(sx2x, sx2y, sx2z));
+        boolean sc = isSolid(world.getBlock(scx , scy , scz ));
+
+        int occ = (s1?1:0) + (s2?1:0) + (sc?1:0);
+        if (s1 && s2)      return 0.40f;
+        if (occ == 2)      return 0.60f;
+        if (occ == 1)      return 0.80f;
+        return 1.00f;
+    }
+    
+    private static boolean isSolid(AbstractBlock b) {
+        if (b == null) return false;
+        BlockType t = b.getType();
+        return t != null && t != BlockType.AIR && t != BlockType.WATER;
     }
 
 }

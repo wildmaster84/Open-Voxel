@@ -75,8 +75,7 @@ public final class OutlineRenderer {
         if (uColor >= 0) GL20.glUniform4f(uColor, 0f, 0f, 0f, 1f); // black
 
         GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glDisable(GL11.GL_CULL_FACE);
-        GL11.glLineWidth(2f);
+        GL11.glLineWidth(1.5f);
 
         GL30.glBindVertexArray(vao);
         GL11.glDrawArrays(GL11.GL_LINE_LOOP, 0, 4);

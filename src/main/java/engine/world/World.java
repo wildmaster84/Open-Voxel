@@ -7,6 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import engine.world.AbstractBlock;
 import engine.world.AbstractBlock.Facing;
+import engine.world.block.BlockType;
 import engine.world.block.Slab;
 import engine.world.block.Slab.SlabType;
 import engine.world.block.Stairs;

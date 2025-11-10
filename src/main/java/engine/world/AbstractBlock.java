@@ -1,6 +1,7 @@
 package engine.world;
 
 import engine.physics.PhysicsEngine.AABB;
+import engine.world.block.BlockType;
 import engine.world.block.Slab;
 import engine.world.block.Stairs;
 

@@ -2,7 +2,6 @@ package engine.world.block;
 
 import engine.physics.PhysicsEngine.AABB;
 import engine.world.AbstractBlock;
-import engine.world.BlockType;
 
 import java.util.List;
 

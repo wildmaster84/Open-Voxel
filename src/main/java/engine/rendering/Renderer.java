@@ -1,16 +1,15 @@
 package engine.rendering;
 
 import engine.world.World;
+import engine.world.block.BlockType;
 import engine.world.block.Slab;
 import engine.world.block.Slab.SlabType;
 import engine.world.block.Stairs;
 import engine.world.Chunk;
 import engine.input.InputHandler;
-import engine.rendering.FaceRenderer.FaceDirection;
-import engine.rendering.FaceRenderer.FaceVertices;
 import engine.world.AbstractBlock;
 import engine.world.AbstractBlock.Facing;
-import engine.world.BlockType;
+
 import org.lwjgl.opengl.*;
 import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryUtil;
@@ -45,7 +44,7 @@ public class Renderer {
     private OutlineRenderer outline = new OutlineRenderer();
 
     private float timeOfDay01 = 0f;
-    private static final float DAY_LENGTH_SEC = 24f * 60f; // 24 minutes full cycle
+    private static final float DAY_LENGTH_SEC = 24f * 60f;
 
     private enum MeshState { BUILDING, READY, GPU_LOADED }
 
@@ -69,54 +68,7 @@ public class Renderer {
         setupSkybox();
         setupUnderwaterOverlay();
         outline.init();
-    }
-
-    private static final int[][] NORM = {
-        { 0, 1, 0}, { 0,-1, 0}, { 0, 0, 1}, { 0, 0,-1}, {-1, 0, 0}, { 1, 0, 0}
-    };
-    private static final int[][] UAX = {
-        { 1, 0, 0}, { 1, 0, 0}, { 1, 0, 0}, { 1, 0, 0}, { 0, 0, 1}, { 0, 0, 1}
-    };
-    private static final int[][] VAX = {
-        { 0, 0, 1}, { 0, 0, 1}, { 0, 1, 0}, { 0, 1, 0}, { 0, 1, 0}, { 0, 1, 0}
-    };
-    private static final int[][] CORNER_SIGNS = {
-        {-1,-1,  1,-1,  1, 1, -1, 1},
-        {-1,-1,  1,-1,  1, 1, -1, 1},
-        {-1,-1,  1,-1,  1, 1, -1, 1},
-        {-1,-1,  1,-1,  1, 1, -1, 1},
-        {-1,-1,  1,-1,  1, 1, -1, 1},
-        {-1,-1,  1,-1,  1, 1, -1, 1}
-    };
-
-    private static boolean isSolid(AbstractBlock b) {
-        if (b == null) return false;
-        BlockType t = b.getType();
-        return t != null && t != BlockType.AIR && t != BlockType.WATER;
-    }
-
-    private float cornerAO(World world, int gx, int gy, int gz, int face, int cornerIndex) {
-        int nx = NORM[face][0], ny = NORM[face][1], nz = NORM[face][2];
-        int ux = UAX[face][0],  uy = UAX[face][1],  uz = UAX[face][2];
-        int vx = VAX[face][0],  vy = VAX[face][1],  vz = VAX[face][2];
-
-        int uSign = CORNER_SIGNS[face][cornerIndex*2 + 0];
-        int vSign = CORNER_SIGNS[face][cornerIndex*2 + 1];
-
-        int sx1x = gx + uSign*ux, sx1y = gy + uSign*uy, sx1z = gz + uSign*uz;
-        int sx2x = gx + vSign*vx, sx2y = gy + vSign*vy, sx2z = gz + vSign*vz;
-        int scx  = gx + uSign*ux + vSign*vx, scy  = gy + uSign*uy + vSign*vy, scz  = gz + uSign*uz + vSign*vz;
-
-        boolean s1 = isSolid(world.getBlock(sx1x, sx1y, sx1z));
-        boolean s2 = isSolid(world.getBlock(sx2x, sx2y, sx2z));
-        boolean sc = isSolid(world.getBlock(scx , scy , scz ));
-
-        int occ = (s1?1:0) + (s2?1:0) + (sc?1:0);
-        if (s1 && s2)      return 0.40f;
-        if (occ == 2)      return 0.60f;
-        if (occ == 1)      return 0.80f;
-        return 1.00f;
-    }
+    }    
 
     private static float dayAmount(float t) {
         double phase = t - 0.25;
@@ -591,16 +543,17 @@ public class Renderer {
                             }
                             float[] verts = FaceRenderer.FaceVertices.get(face);
 
-                            int nx = NORM[face][0], ny = NORM[face][1], nz = NORM[face][2];
+                            int[] nrm = FaceRenderer.FaceDirection.get(face);
+                            int nx = nrm[0], ny = nrm[1], nz = nrm[2];
                             int gx = (int)wx + nx;
                             int gy = (int)wy + ny;
                             int gz = (int)wz + nz;
 
                             float[] ao4 = new float[4];
-                            ao4[0] = cornerAO(world, gx, gy, gz, face, 0);
-                            ao4[1] = cornerAO(world, gx, gy, gz, face, 1);
-                            ao4[2] = cornerAO(world, gx, gy, gz, face, 2);
-                            ao4[3] = cornerAO(world, gx, gy, gz, face, 3);
+                            ao4[0] = FaceRenderer.cornerAO(world, gx, gy, gz, face, 0);
+                            ao4[1] = FaceRenderer.cornerAO(world, gx, gy, gz, face, 1);
+                            ao4[2] = FaceRenderer.cornerAO(world, gx, gy, gz, face, 2);
+                            ao4[3] = FaceRenderer.cornerAO(world, gx, gy, gz, face, 3);
 
                             fb.addFaceWithAO(wx, wy, wz, verts, ao4);
                             continue;
@@ -866,7 +819,7 @@ public class Renderer {
         private void bindForDraw(Texture tex, int yOffLoc, int offLoc, int scaleLoc) {
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
             if (tex instanceof AnimatedTexture) {
-                ((AnimatedTexture) tex).update(Renderer.delta);
+                ((AnimatedTexture) tex).update(delta);
                 tex.bind();
                 if (yOffLoc >= 0) GL20.glUniform1f(yOffLoc, -0.1f);
             } else {

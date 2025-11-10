@@ -6,8 +6,8 @@ import org.joml.Vector3f;
 import engine.input.InputHandler;
 import engine.input.InputHandler.Hit;
 import engine.world.AbstractBlock;
-import engine.world.BlockType;
 import engine.world.World;
+import engine.world.block.BlockType;
 
 public class Camera {
     private Vector3f position;
