@@ -45,6 +45,7 @@ public class Renderer {
 
     private float timeOfDay01 = 0f;
     private static final float DAY_LENGTH_SEC = 24f * 60f;
+    private static final float TICK_RATE = 20f; // 20 ticks per second
 
     private enum MeshState { BUILDING, READY, GPU_LOADED }
 
@@ -74,6 +75,21 @@ public class Renderer {
         double phase = t - 0.25;
         double c = Math.cos(2.0 * Math.PI * phase);
         return (float)((c + 1.0) * 0.5);
+    }
+
+    public void tick(float dt) {
+        // Advance time-of-day
+        timeOfDay01 = (timeOfDay01 + (dt / DAY_LENGTH_SEC)) % 1.0f;
+        
+        // Update animated textures
+        for (BlockType block : BlockType.values()) {
+            if (block.back instanceof AnimatedTexture) ((AnimatedTexture) block.back).update(dt);
+            if (block.bottom instanceof AnimatedTexture) ((AnimatedTexture) block.bottom).update(dt);
+            if (block.front instanceof AnimatedTexture) ((AnimatedTexture) block.front).update(dt);
+            if (block.left instanceof AnimatedTexture) ((AnimatedTexture) block.left).update(dt);
+            if (block.right instanceof AnimatedTexture) ((AnimatedTexture) block.right).update(dt);
+            if (block.top instanceof AnimatedTexture) ((AnimatedTexture) block.top).update(dt);
+        }
     }
 
     private void setupGL() {
@@ -278,9 +294,13 @@ public class Renderer {
         uOverlayStrength = GL20.glGetUniformLocation(prog, "uStrength");
     }
 
-    public void render(float delta, InputHandler input) {
-        this.delta = delta;
-        timeOfDay01 = (timeOfDay01 + (delta / DAY_LENGTH_SEC)) % 1.0f;
+    // Backward-compatible overload
+    public void render(float delta) {
+        render(0f, null);
+    }
+
+    public void render(float interp, InputHandler input) {
+        this.delta = interp;
 
         int cameraChunkX = Math.floorDiv((int) camera.getPosition().x, Chunk.SIZE);
         int cameraChunkZ = Math.floorDiv((int) camera.getPosition().z, Chunk.SIZE);
@@ -818,12 +838,13 @@ public class Renderer {
 
         private void bindForDraw(Texture tex, int yOffLoc, int offLoc, int scaleLoc) {
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            tex.bind();
             if (tex instanceof AnimatedTexture) {
-                ((AnimatedTexture) tex).update(delta);
-                tex.bind();
+                AnimatedTexture animTex = (AnimatedTexture) tex;
+                if (offLoc >= 0) GL20.glUniform1f(offLoc, animTex.getFrameOffset());
+                if (scaleLoc >= 0) GL20.glUniform1f(scaleLoc, animTex.getFrameScale());
                 if (yOffLoc >= 0) GL20.glUniform1f(yOffLoc, -0.1f);
             } else {
-                tex.bind();
                 if (offLoc   >= 0) GL20.glUniform1f(offLoc,   0f);
                 if (scaleLoc >= 0) GL20.glUniform1f(scaleLoc, 1f);
                 if (yOffLoc  >= 0) GL20.glUniform1f(yOffLoc,  0f);

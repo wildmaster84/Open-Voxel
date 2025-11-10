@@ -18,8 +18,23 @@ public class World implements Serializable {
     private final PerlinNoise perlin;
     private final int SEA_LEVEL = 92;
 
+    private engine.physics.PhysicsEngine physicsEngine;
+
     public World(long seed) {
         this.perlin = new PerlinNoise(seed);
+    }
+
+    public void setPhysicsEngine(engine.physics.PhysicsEngine physicsEngine) {
+        this.physicsEngine = physicsEngine;
+    }
+
+    public void tick(float dt) {
+        // World-level tick logic
+        // Call physics engine tick if available
+        if (physicsEngine != null) {
+            // Physics engine doesn't have a tick method, it's updated separately
+            // So this is a placeholder for future expansion
+        }
     }
     
     public Map<Long, Chunk> getChunks() {
