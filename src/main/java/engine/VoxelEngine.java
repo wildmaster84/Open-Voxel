@@ -62,20 +62,45 @@ public class VoxelEngine {
 	}
 
 	private void loop() {
+		final float TICK_RATE = 20.0f; // 20 ticks per second
+		final float TICK_DT = 1.0f / TICK_RATE;
+		final int MAX_TICKS_PER_FRAME = 5; // spiral-of-death protection
+		
 		double lastTime = GLFW.glfwGetTime();
+		float accumulator = 0f;
 		int frames = 0;
 		double lastFpsTime = lastTime;
+		
 		while (!GLFW.glfwWindowShouldClose(window) && running) {
 			double now = GLFW.glfwGetTime();
-			float delta = (float) (now - lastTime);
+			float frameTime = (float) (now - lastTime);
 			lastTime = now;
-			if (delta > 0.1f)
-				delta = 0.1f;
-			input.pollEvents(delta);
-			physics.update(delta, input.isJumpPressed(), input.isCrouchPressed());
-			renderer.render(delta, input);
+			
+			// Cap frame time to avoid spiral of death
+			if (frameTime > 0.25f)
+				frameTime = 0.25f;
+			
+			accumulator += frameTime;
+			
+			// Fixed timestep updates
+			int ticksThisFrame = 0;
+			while (accumulator >= TICK_DT && ticksThisFrame < MAX_TICKS_PER_FRAME) {
+				input.pollEvents(TICK_DT);
+				physics.update(TICK_DT, input.isJumpPressed(), input.isCrouchPressed());
+				renderer.tick(TICK_DT);
+				accumulator -= TICK_DT;
+				ticksThisFrame++;
+			}
+			
+			// Compute interpolation factor for smooth rendering
+			float interpolation = accumulator / TICK_DT;
+			
+			// Render with interpolation
+			renderer.render(frameTime, input);
+			
 			GLFW.glfwSwapBuffers(window);
 			GLFW.glfwPollEvents();
+			
 			frames++;
 			if (now - lastFpsTime >= 1.0) {
 				Vector3f pos = camera.getPosition();

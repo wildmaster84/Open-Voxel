@@ -45,6 +45,8 @@ public class Renderer {
 
     private float timeOfDay01 = 0f;
     private static final float DAY_LENGTH_SEC = 24f * 60f;
+    
+    private AnimatedTexture waterTexture = null;
 
     private enum MeshState { BUILDING, READY, GPU_LOADED }
 
@@ -278,9 +280,24 @@ public class Renderer {
         uOverlayStrength = GL20.glGetUniformLocation(prog, "uStrength");
     }
 
+    public void tick(float dt) {
+        timeOfDay01 = (timeOfDay01 + (dt / DAY_LENGTH_SEC)) % 1.0f;
+        
+        // Update animated textures
+        for (BlockType type : BlockType.values()) {
+            if (type != null) {
+                Texture[] textures = {type.back, type.bottom, type.front, type.left, type.right, type.top};
+                for (Texture tex : textures) {
+                    if (tex instanceof AnimatedTexture) {
+                        ((AnimatedTexture) tex).update(dt);
+                    }
+                }
+            }
+        }
+    }
+
     public void render(float delta, InputHandler input) {
         this.delta = delta;
-        timeOfDay01 = (timeOfDay01 + (delta / DAY_LENGTH_SEC)) % 1.0f;
 
         int cameraChunkX = Math.floorDiv((int) camera.getPosition().x, Chunk.SIZE);
         int cameraChunkZ = Math.floorDiv((int) camera.getPosition().z, Chunk.SIZE);
@@ -819,8 +836,10 @@ public class Renderer {
         private void bindForDraw(Texture tex, int yOffLoc, int offLoc, int scaleLoc) {
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
             if (tex instanceof AnimatedTexture) {
-                ((AnimatedTexture) tex).update(delta);
+                AnimatedTexture animTex = (AnimatedTexture) tex;
                 tex.bind();
+                if (offLoc   >= 0) GL20.glUniform1f(offLoc,   animTex.getFrameOffset());
+                if (scaleLoc >= 0) GL20.glUniform1f(scaleLoc, animTex.getFrameScale());
                 if (yOffLoc >= 0) GL20.glUniform1f(yOffLoc, -0.1f);
             } else {
                 tex.bind();

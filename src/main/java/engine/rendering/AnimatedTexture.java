@@ -30,6 +30,28 @@ public class AnimatedTexture extends Texture {
 		}
 	}
 
+	public float getFrameOffset() {
+		int totalHeight = this.height;
+		int framePixels = this.width;
+		if (totalHeight <= 0 || framePixels <= 0)
+			return 0f;
+		float frameHeightFraction = (float) framePixels / (float) totalHeight;
+		float texel = 1.0f / (float) totalHeight;
+		float pad = 0.5f * texel;
+		return currentFrame * frameHeightFraction + pad;
+	}
+
+	public float getFrameScale() {
+		int totalHeight = this.height;
+		int framePixels = this.width;
+		if (totalHeight <= 0 || framePixels <= 0)
+			return 1f;
+		float frameHeightFraction = (float) framePixels / (float) totalHeight;
+		float texel = 1.0f / (float) totalHeight;
+		float pad = 0.5f * texel;
+		return frameHeightFraction - 2.0f * pad;
+	}
+
 	@Override
 	public void bind() {
 		GL13.glActiveTexture(GL13.GL_TEXTURE0);
