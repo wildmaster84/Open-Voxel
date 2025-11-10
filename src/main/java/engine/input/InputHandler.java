@@ -194,30 +194,30 @@ public class InputHandler {
     public void pollEvents(float delta) {
         boolean sprint = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS;
         boolean crouch = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS;
-        float base = 0.10f;
+        float base = 4.0f; // units per second
         float moveSpeed = base;
         
-        if (sprint) moveSpeed = 0.15f;
-        if (crouch) moveSpeed = 0.06f;
+        if (sprint) moveSpeed = 6.0f;
+        if (crouch) moveSpeed = 2.4f;
         
         float yawRad = (float) Math.toRadians(camera.getYaw());
         float dX = 0f, dZ = 0f;
         
         if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_W) == GLFW.GLFW_PRESS) {
-            dX += (float) Math.sin(yawRad) * moveSpeed;
-            dZ -= (float) Math.cos(yawRad) * moveSpeed;
+            dX += (float) Math.sin(yawRad) * moveSpeed * delta;
+            dZ -= (float) Math.cos(yawRad) * moveSpeed * delta;
         }
         if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_S) == GLFW.GLFW_PRESS) {
-            dX -= (float) Math.sin(yawRad) * moveSpeed;
-            dZ += (float) Math.cos(yawRad) * moveSpeed;
+            dX -= (float) Math.sin(yawRad) * moveSpeed * delta;
+            dZ += (float) Math.cos(yawRad) * moveSpeed * delta;
         }
         if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_A) == GLFW.GLFW_PRESS) {
-            dX -= (float) Math.cos(yawRad) * moveSpeed;
-            dZ -= (float) Math.sin(yawRad) * moveSpeed;
+            dX -= (float) Math.cos(yawRad) * moveSpeed * delta;
+            dZ -= (float) Math.sin(yawRad) * moveSpeed * delta;
         }
         if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_D) == GLFW.GLFW_PRESS) {
-            dX += (float) Math.cos(yawRad) * moveSpeed;
-            dZ += (float) Math.sin(yawRad) * moveSpeed;
+            dX += (float) Math.cos(yawRad) * moveSpeed * delta;
+            dZ += (float) Math.sin(yawRad) * moveSpeed * delta;
         }
         
         Vector3f pos = camera.getPosition();
