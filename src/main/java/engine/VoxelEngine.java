@@ -86,7 +86,6 @@ public class VoxelEngine {
 			int ticksThisFrame = 0;
 			while (accumulator >= TICK_DT && ticksThisFrame < MAX_TICKS_PER_FRAME) {
 				input.pollEvents(TICK_DT);
-				physics.update(TICK_DT, input.isJumpPressed(), input.isCrouchPressed());
 				renderer.tick(TICK_DT);
 				accumulator -= TICK_DT;
 				ticksThisFrame++;

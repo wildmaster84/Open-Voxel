@@ -51,7 +51,7 @@ public class PhysicsEngine {
 		return isOnGround;
 	}
 
-	public void update(float delta, boolean jumpPressed, boolean crouchPressed) {
+	public void tick(float delta, boolean jumpPressed, boolean crouchPressed) {
 		crouching = crouchPressed;
 		final float playerHeight = crouching ? CROUCH_HEIGHT : PLAYER_HEIGHT;
 		Submersion sub = computeSubmersion(camera.getPosition());

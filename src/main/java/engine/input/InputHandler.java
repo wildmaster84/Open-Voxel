@@ -192,7 +192,7 @@ public class InputHandler {
     }
 
     public void pollEvents(float delta) {
-        physics.update(delta, isJumpPressed(), isCrouchPressed());
+        physics.tick(delta, isJumpPressed(), isCrouchPressed());
         
         boolean sprint = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_SHIFT) == GLFW.GLFW_PRESS;
         boolean crouch = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS;
