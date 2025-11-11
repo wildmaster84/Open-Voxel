@@ -368,15 +368,36 @@ The GLUIRenderer manages OpenGL state automatically:
 - Ensure `UIManager.get().tick()` is called from the game tick loop
 - Pass tick delta in milliseconds (not seconds)
 
-### Text not showing
-- The `GLUIRenderer.drawText()` is a placeholder implementation
-- For production use, integrate a proper font rendering library (e.g., STB TrueType via LWJGL)
+### Text not rendering properly
+- The font system automatically initializes on first use
+- It attempts to load system fonts (DejaVu, Liberation, Arial, or Helvetica)
+- Falls back to simple block rendering if no fonts are available
+- Font texture is cached for performance
+
+## Font System
+
+The `GLUIRenderer` includes a fully functional bitmap font rendering system:
+
+- **Automatic Initialization**: Font system initializes automatically on first `drawText()` call
+- **System Font Support**: Attempts to load TrueType fonts from common system locations
+- **Fallback Rendering**: Uses simple block rendering if no fonts are available
+- **Text Measurement**: Use `getTextWidth(text)` to measure text for layout calculations
+- **Font Height**: Use `getFontHeight()` to get the font height in pixels
+
+Example:
+```java
+// Draw text with automatic width calculation
+String text = "Hello World";
+float textWidth = GLUIRenderer.getTextWidth(text);
+float centerX = (screenWidth - textWidth) / 2;
+GLUIRenderer.drawText(text, centerX, 100);
+```
 
 ## Future Enhancements
 
 Consider these improvements for production use:
 
-1. **Font Rendering**: Replace `GLUIRenderer.drawText()` with proper font rendering using STB TrueType
+1. **Custom Fonts**: Add ability to load custom TTF font files
 2. **Texture Support**: Add methods to draw textured panels and sprites
 3. **Layout System**: Implement automatic layout management (anchors, padding, etc.)
 4. **Widget Library**: Build reusable UI components (buttons, sliders, checkboxes)
