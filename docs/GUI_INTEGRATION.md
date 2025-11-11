@@ -403,20 +403,30 @@ The GLUIRenderer manages OpenGL state automatically:
 - Pass tick delta in milliseconds (not seconds)
 
 ### Text not rendering properly
-- The font system automatically initializes on first use
-- It attempts to load system fonts (DejaVu, Liberation, Arial, or Helvetica)
-- Falls back to simple block rendering if no fonts are available
-- Font texture is cached for performance
+- The font system requires ARIAL.TTF to be present in the resources directory
+- Place ARIAL.TTF in `./resources/` or `src/main/resources/`
+- The system automatically loads the font on first use
+- If font loading fails, check console for error messages
 
 ## Font System
 
 The `GLUIRenderer` includes a fully functional bitmap font rendering system:
 
+- **Font File Required**: Place `ARIAL.TTF` in `./resources/` or `src/main/resources/` directory
 - **Automatic Initialization**: Font system initializes automatically on first `drawText()` call
-- **System Font Support**: Attempts to load TrueType fonts from common system locations
-- **Fallback Rendering**: Uses simple block rendering if no fonts are available
+- **Fallback Paths**: Also tries to load from system font paths as backup
 - **Text Measurement**: Use `getTextWidth(text)` to measure text for layout calculations
 - **Font Height**: Use `getFontHeight()` to get the font height in pixels
+
+### Setting up the Font
+
+1. Obtain ARIAL.TTF (or any TrueType font file)
+2. Place it in one of these locations:
+   - `./resources/ARIAL.TTF` (relative to working directory)
+   - `src/main/resources/ARIAL.TTF` (will be packaged in JAR)
+3. The font will be loaded automatically when text rendering is first used
+
+**Note**: A DejaVuSans.ttf font is included in `src/main/resources/ARIAL.TTF` by default for convenience.
 
 Example:
 ```java

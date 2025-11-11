@@ -48,7 +48,7 @@ public class GLUIRenderer {
     
     /**
      * Initializes the font rendering system.
-     * This creates a bitmap font texture from an embedded TrueType font.
+     * Loads ARIAL.TTF from resources and creates a bitmap font texture.
      * Called automatically on first use.
      */
     private static void initializeFont() {
@@ -57,15 +57,25 @@ public class GLUIRenderer {
         }
         
         try {
-            // Create a simple bitmap font using STB TrueType
+            // Load TrueType font from resources or file system
             ByteBuffer ttf = createDefaultFontData();
             
+            if (ttf == null || ttf.capacity() == 0) {
+                throw new RuntimeException("Failed to load font data");
+            }
+            
+            // Create bitmap buffer for font atlas
             ByteBuffer bitmap = MemoryUtil.memAlloc(BITMAP_W * BITMAP_H);
             cdata = STBTTBakedChar.malloc(CHAR_COUNT);
             
-            STBTruetype.stbtt_BakeFontBitmap(ttf, FONT_SIZE, bitmap, BITMAP_W, BITMAP_H, CHAR_START, cdata);
+            // Bake font into bitmap
+            int result = STBTruetype.stbtt_BakeFontBitmap(ttf, FONT_SIZE, bitmap, BITMAP_W, BITMAP_H, CHAR_START, cdata);
             
-            // Create OpenGL texture
+            if (result <= 0) {
+                throw new RuntimeException("Failed to bake font bitmap");
+            }
+            
+            // Create OpenGL texture from bitmap
             fontTextureId = GL11.glGenTextures();
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, fontTextureId);
             GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_ALPHA, BITMAP_W, BITMAP_H, 0, 
@@ -73,39 +83,57 @@ public class GLUIRenderer {
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
             
+            // Clean up temporary buffers
             MemoryUtil.memFree(bitmap);
             MemoryUtil.memFree(ttf);
             
             initialized = true;
+            System.out.println("Font system initialized successfully");
         } catch (Exception e) {
-            System.err.println("Failed to initialize font rendering: " + e.getMessage());
+            System.err.println("CRITICAL: Failed to initialize font rendering: " + e.getMessage());
             e.printStackTrace();
-            // Fall back to simple rendering
+            System.err.println("Please ensure ARIAL.TTF is present in ./resources/ or src/main/resources/");
+            // Mark as initialized to prevent repeated attempts
             initialized = true;
         }
     }
     
     /**
-     * Creates a simple default font data buffer.
-     * Uses a basic programmatic approach to create a minimal TrueType-compatible font.
+     * Loads font data from resources or system paths.
+     * Priority: 1) Game resources, 2) System fonts, 3) Fallback
      */
     private static ByteBuffer createDefaultFontData() {
-        // Try to load a system font or create a minimal font programmatically
-        // For maximum compatibility, we'll create a very simple bitmap-style font
+        // First, try to load from game resources
+        try {
+            java.io.InputStream resourceStream = GLUIRenderer.class.getResourceAsStream("/ARIAL.TTF");
+            if (resourceStream == null) {
+                resourceStream = GLUIRenderer.class.getResourceAsStream("/arial.ttf");
+            }
+            
+            if (resourceStream != null) {
+                byte[] fontData = resourceStream.readAllBytes();
+                resourceStream.close();
+                
+                if (fontData.length > 0) {
+                    ByteBuffer buffer = MemoryUtil.memAlloc(fontData.length);
+                    buffer.put(fontData);
+                    buffer.flip();
+                    return buffer;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Could not load font from resources: " + e.getMessage());
+        }
         
-        // Allocate buffer for a minimal TTF font (header + minimal glyph data)
-        int size = 1024 * 32; // 32KB should be enough for basic ASCII glyphs
-        ByteBuffer buffer = MemoryUtil.memAlloc(size);
-        
-        // Try to load from common system font paths
-        String[] fontPaths = {
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-            "C:\\Windows\\Fonts\\arial.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+        // Try to load from file system path relative to working directory
+        String[] resourcePaths = {
+            "./resources/ARIAL.TTF",
+            "./resources/arial.ttf",
+            "resources/ARIAL.TTF",
+            "resources/arial.ttf"
         };
         
-        for (String path : fontPaths) {
+        for (String path : resourcePaths) {
             try {
                 java.io.File fontFile = new java.io.File(path);
                 if (fontFile.exists()) {
@@ -114,6 +142,35 @@ public class GLUIRenderer {
                     fis.close();
                     
                     if (fontData.length > 0) {
+                        ByteBuffer buffer = MemoryUtil.memAlloc(fontData.length);
+                        buffer.put(fontData);
+                        buffer.flip();
+                        return buffer;
+                    }
+                }
+            } catch (Exception e) {
+                // Continue to next path
+            }
+        }
+        
+        // Try to load from common system font paths
+        String[] systemFontPaths = {
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+            "C:\\Windows\\Fonts\\arial.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+        };
+        
+        for (String path : systemFontPaths) {
+            try {
+                java.io.File fontFile = new java.io.File(path);
+                if (fontFile.exists()) {
+                    java.io.FileInputStream fis = new java.io.FileInputStream(fontFile);
+                    byte[] fontData = fis.readAllBytes();
+                    fis.close();
+                    
+                    if (fontData.length > 0) {
+                        ByteBuffer buffer = MemoryUtil.memAlloc(fontData.length);
                         buffer.put(fontData);
                         buffer.flip();
                         return buffer;
@@ -124,26 +181,8 @@ public class GLUIRenderer {
             }
         }
         
-        // If no system font found, create a minimal programmatic font
-        // This creates a very basic pixel-based representation
-        createSimpleBitmapFont(buffer);
-        buffer.flip();
-        return buffer;
-    }
-    
-    /**
-     * Creates a simple bitmap-based font representation.
-     * This is a fallback when no TTF fonts are available.
-     */
-    private static void createSimpleBitmapFont(ByteBuffer buffer) {
-        // Create a minimal TTF header structure
-        // This is a simplified approach - just fill with basic data
-        // that STB will interpret as best it can
-        
-        // Fill with basic glyph outlines
-        for (int i = 0; i < 1024; i++) {
-            buffer.put((byte) (i % 256));
-        }
+        // If no font found, throw an error - we need a real font
+        throw new RuntimeException("Could not load any TrueType font. Please place ARIAL.TTF in ./resources/ directory or src/main/resources/");
     }
     
     /**
