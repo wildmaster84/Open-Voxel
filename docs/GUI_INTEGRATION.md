@@ -40,6 +40,30 @@ UIManager.get().closeAll();
 
 ## Integration Steps
 
+### 0. Initialization (Required for Cursor Management)
+
+Set the window handle in UIManager during engine initialization to enable automatic cursor management:
+
+**File**: `engine/VoxelEngine.java`
+
+**Location**: In the `initEngine()` method or after window creation
+
+```java
+private void initEngine() {
+    eventManager = new GameEventManager();
+    world = new World(2025L);
+    camera = new Camera(WIDTH, HEIGHT, 95, this.renderDistance, world);
+    physics = new PhysicsEngine(world, camera);
+    input = new InputHandler(window, camera, physics, this);
+    renderer = new Renderer(world, camera);
+    
+    // ADD THIS: Set window for cursor management
+    com.openvoxel.ui.UIManager.get().setWindow(window);
+}
+```
+
+This enables automatic cursor show/hide functionality when UIs/GUIs are opened/closed.
+
 ### 1. Game Tick Loop Integration
 
 Add UIManager tick call to your main game loop where you update game logic:
@@ -168,36 +192,46 @@ private void initGLFW() {
 }
 ```
 
-### 4. Cursor Management (Optional)
+### 4. Cursor Management (Automatic)
 
-When a GUI is open, you may want to show the cursor and disable camera rotation:
+The UIManager automatically handles cursor visibility:
 
-```java
-// When opening a GUI:
-if (com.openvoxel.ui.UIManager.get().hasActiveGUIs()) {
-    GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
-}
+- **When a UI or GUI is opened**: Cursor is shown (set to GLFW_CURSOR_NORMAL)
+- **When the last UI/GUI is closed**: Cursor is hidden (restored to GLFW_CURSOR_DISABLED)
+- **Camera snap prevention**: The last mouse position is saved before showing the cursor and restored when hiding it, preventing camera jumps
 
-// When closing all GUIs:
-if (!com.openvoxel.ui.UIManager.get().hasActiveGUIs()) {
-    GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
-}
-```
+**No manual cursor management required** - just call `UIManager.get().setWindow(window)` during initialization.
+
+#### How it works:
+
+1. When the first UI/GUI is opened, UIManager:
+   - Saves the current cursor mode (disabled/normal)
+   - Saves the current mouse position
+   - Shows the cursor
+
+2. When the last UI/GUI is closed, UIManager:
+   - Restores the cursor to the saved position (prevents camera snap)
+   - Hides the cursor if it was previously disabled
+
+This ensures smooth transitions without camera jumps when opening/closing menus.
 
 ## Usage Examples
 
 ### Example 1: Opening a Pause Menu
 
 ```java
-// Create and open a simple pause menu UI
+// Create and open an interactive pause menu GUI
 import com.openvoxel.ui.UIManager;
 import com.openvoxel.ui.examples.PauseMenu;
 
 // In your game code (e.g., when P key is pressed):
-UIManager.get().openUI(new PauseMenu(windowWidth, windowHeight));
+UIManager.get().openGUI(new PauseMenu(windowWidth, windowHeight));
 
-// Close it later:
-UIManager.get().closeTopUI();
+// The pause menu will:
+// - Automatically show the cursor
+// - Handle clicks on the Resume button
+// - Handle ESC key to close
+// - Automatically hide cursor when closed (without camera snap)
 ```
 
 ### Example 2: Opening an Inventory

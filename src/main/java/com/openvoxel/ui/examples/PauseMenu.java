@@ -1,29 +1,32 @@
 package com.openvoxel.ui.examples;
 
 import com.openvoxel.ui.GLUIRenderer;
-import com.openvoxel.ui.UI;
+import com.openvoxel.ui.GUI;
 import com.openvoxel.ui.UIManager;
+import org.lwjgl.glfw.GLFW;
 
 /**
- * Example pause menu UI that demonstrates how to implement a simple menu
- * using the UI framework. This UI renders off-tick and displays a translucent
- * panel with a "Resume" button.
+ * Example pause menu GUI that demonstrates how to implement an interactive menu
+ * using the GUI framework. This GUI displays a translucent panel with a clickable
+ * "Resume" button.
  * 
- * <p>This is a render-only UI (extends {@link UI}), meaning it doesn't receive
- * tick updates but is drawn every frame. For interactive menus that need to
- * handle clicks and process game logic, use {@link com.openvoxel.ui.GUI} instead.
+ * <p>This is an interactive GUI (extends {@link GUI}), meaning it receives
+ * tick updates and can handle mouse clicks and keyboard input.
  * 
  * <p>Example usage:
  * <pre>
  * // Open the pause menu
- * UIManager.get().openUI(new PauseMenu(1280, 720));
+ * UIManager.get().openGUI(new PauseMenu(1280, 720));
  * </pre>
  * 
- * <p>Note: This example uses simple rendering and doesn't handle actual click events.
- * For a fully interactive pause menu with button clicks, see {@link PlayerInventory}
- * which extends GUI and demonstrates event handling.
+ * <p>Features:
+ * <ul>
+ *   <li>Clickable Resume button to close the menu</li>
+ *   <li>ESC key support to close the menu</li>
+ *   <li>Automatic cursor display when opened</li>
+ * </ul>
  */
-public class PauseMenu extends UI {
+public class PauseMenu extends GUI {
     
     private final int windowWidth;
     private final int windowHeight;
@@ -48,6 +51,11 @@ public class PauseMenu extends UI {
     @Override
     public void onOpen() {
         System.out.println("Pause menu opened");
+    }
+    
+    @Override
+    public void onTick(long tickDelta) {
+        // Pause menu doesn't need tick updates
     }
     
     @Override
@@ -91,15 +99,42 @@ public class PauseMenu extends UI {
     }
     
     @Override
+    public void onMouseClick(int x, int y, int button) {
+        // Only handle left mouse button
+        if (button != 0) {
+            return;
+        }
+        
+        // Calculate button position
+        float panelX = (windowWidth - PANEL_WIDTH) / 2;
+        float panelY = (windowHeight - PANEL_HEIGHT) / 2;
+        float buttonX = panelX + (PANEL_WIDTH - BUTTON_WIDTH) / 2;
+        float buttonY = panelY + 80;
+        
+        // Check if Resume button was clicked
+        if (GLUIRenderer.isPointInRect(x, y, buttonX, buttonY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
+            System.out.println("Resume button clicked");
+            close();
+        }
+    }
+    
+    @Override
+    public void onKeyPress(int key) {
+        // Handle ESC key to close menu
+        if (key == GLFW.GLFW_KEY_ESCAPE) {
+            close();
+        }
+    }
+    
+    @Override
     public void onClose() {
         System.out.println("Pause menu closed");
     }
     
     /**
-     * Example method showing how a pause menu might be closed programmatically.
-     * In practice, you would call this from an input handler or GUI event.
+     * Closes this pause menu.
      */
     public void close() {
-        UIManager.get().closeTopUI();
+        UIManager.get().closeTopGUI();
     }
 }

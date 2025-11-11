@@ -1,5 +1,7 @@
 package com.openvoxel.ui;
 
+import org.lwjgl.glfw.GLFW;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -9,14 +11,23 @@ import java.util.List;
  * 
  * <p>The UIManager must be integrated with the game loop:
  * <ul>
+ *   <li>Call {@link #setWindow(long)} once during initialization to enable cursor management</li>
  *   <li>Call {@link #tick(long)} from the main game tick to update all active GUIs</li>
  *   <li>Call {@link #render()} from the render loop to draw all active UIs and GUIs</li>
  *   <li>Forward mouse clicks to {@link #onMouseClick(int, int, int)}</li>
  *   <li>Forward key presses to {@link #onKeyPress(int)}</li>
  * </ul>
  * 
+ * <p>Cursor Management:
+ * The UIManager automatically shows/hides the cursor when UIs or GUIs are opened/closed.
+ * It also saves the last mouse position before showing the cursor to prevent camera snap
+ * when the cursor is hidden again.
+ * 
  * <p>Example integration:
  * <pre>
+ * // During initialization:
+ * UIManager.get().setWindow(window);
+ * 
  * // In game tick loop:
  * UIManager.get().tick(tickDelta);
  * 
@@ -37,6 +48,11 @@ public class UIManager {
     private final List<UI> activeUIs = new ArrayList<>();
     private final List<GUI> activeGUIs = new ArrayList<>();
     
+    private long window = 0;
+    private double savedMouseX = 0;
+    private double savedMouseY = 0;
+    private boolean cursorWasDisabled = false;
+    
     /**
      * Private constructor for singleton pattern.
      */
@@ -53,8 +69,19 @@ public class UIManager {
     }
     
     /**
+     * Sets the GLFW window handle for cursor management.
+     * This must be called during initialization to enable automatic cursor show/hide.
+     * 
+     * @param window The GLFW window handle
+     */
+    public void setWindow(long window) {
+        this.window = window;
+    }
+    
+    /**
      * Opens and adds a UI to the active UI stack.
      * The UI's {@link UI#onOpen()} method will be called immediately.
+     * Automatically shows the cursor if this is the first UI/GUI opened.
      * 
      * @param ui The UI to open
      */
@@ -62,13 +89,20 @@ public class UIManager {
         if (ui == null) {
             throw new IllegalArgumentException("UI cannot be null");
         }
+        
+        boolean wasEmpty = activeUIs.isEmpty() && activeGUIs.isEmpty();
         activeUIs.add(ui);
         ui.onOpen();
+        
+        if (wasEmpty) {
+            showCursor();
+        }
     }
     
     /**
      * Opens and adds a GUI to the active GUI stack.
      * The GUI's {@link GUI#onOpen()} method will be called immediately.
+     * Automatically shows the cursor if this is the first UI/GUI opened.
      * 
      * @param gui The GUI to open
      */
@@ -76,19 +110,30 @@ public class UIManager {
         if (gui == null) {
             throw new IllegalArgumentException("GUI cannot be null");
         }
+        
+        boolean wasEmpty = activeUIs.isEmpty() && activeGUIs.isEmpty();
         activeGUIs.add(gui);
         gui.onOpen();
+        
+        if (wasEmpty) {
+            showCursor();
+        }
     }
     
     /**
      * Closes and removes the topmost UI from the stack.
      * The UI's {@link UI#onClose()} method will be called before removal.
      * If there are no active UIs, this method does nothing.
+     * Automatically hides the cursor if this was the last UI/GUI.
      */
     public void closeTopUI() {
         if (!activeUIs.isEmpty()) {
             UI ui = activeUIs.remove(activeUIs.size() - 1);
             ui.onClose();
+            
+            if (activeUIs.isEmpty() && activeGUIs.isEmpty()) {
+                hideCursor();
+            }
         }
     }
     
@@ -96,11 +141,16 @@ public class UIManager {
      * Closes and removes the topmost GUI from the stack.
      * The GUI's {@link GUI#onClose()} method will be called before removal.
      * If there are no active GUIs, this method does nothing.
+     * Automatically hides the cursor if this was the last UI/GUI.
      */
     public void closeTopGUI() {
         if (!activeGUIs.isEmpty()) {
             GUI gui = activeGUIs.remove(activeGUIs.size() - 1);
             gui.onClose();
+            
+            if (activeUIs.isEmpty() && activeGUIs.isEmpty()) {
+                hideCursor();
+            }
         }
     }
     
@@ -226,5 +276,50 @@ public class UIManager {
      */
     public int getActiveGUICount() {
         return activeGUIs.size();
+    }
+    
+    /**
+     * Shows the cursor and saves the current mouse position.
+     * This prevents camera snap when the cursor is hidden later.
+     */
+    private void showCursor() {
+        if (window == 0) {
+            return;
+        }
+        
+        // Check if cursor is currently disabled
+        int currentMode = GLFW.glfwGetInputMode(window, GLFW.GLFW_CURSOR);
+        cursorWasDisabled = (currentMode == GLFW.GLFW_CURSOR_DISABLED);
+        
+        if (cursorWasDisabled) {
+            // Save current mouse position before showing cursor
+            double[] xpos = new double[1];
+            double[] ypos = new double[1];
+            GLFW.glfwGetCursorPos(window, xpos, ypos);
+            savedMouseX = xpos[0];
+            savedMouseY = ypos[0];
+        }
+        
+        // Show the cursor
+        GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+    }
+    
+    /**
+     * Hides the cursor and restores the saved mouse position.
+     * This prevents camera snap by resetting the cursor to where it was.
+     */
+    private void hideCursor() {
+        if (window == 0) {
+            return;
+        }
+        
+        if (cursorWasDisabled) {
+            // Restore the saved mouse position before hiding cursor
+            // This prevents camera snap
+            GLFW.glfwSetCursorPos(window, savedMouseX, savedMouseY);
+            
+            // Hide the cursor
+            GLFW.glfwSetInputMode(window, GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
+        }
     }
 }
