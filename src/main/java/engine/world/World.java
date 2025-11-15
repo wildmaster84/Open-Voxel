@@ -59,6 +59,13 @@ public class World {
             int cx = (int)(e.getKey() >> 32);
             int cz = (int)(e.getKey() & 0xffffffffL);
             if (Math.abs(cx - playerChunkX) > limit || Math.abs(cz - playerChunkZ) > limit) {
+            	if (e.getValue().isDirty()) {
+        			try {
+                    	saveManager.saveChunk(e.getValue());
+                    } catch (IOException ex) {
+                        ex.printStackTrace();
+                    }
+        		}
                 it.remove();
             }
         }
@@ -92,11 +99,14 @@ public class World {
 
     public void save() {
     	for (Chunk c : chunks.values()) {
-            try {
-            	saveManager.saveChunk(c);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+    		if (c.isDirty()) {
+    			try {
+                	saveManager.saveChunk(c);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+    		}
+            
         }
     }
 
