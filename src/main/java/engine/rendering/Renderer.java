@@ -2,7 +2,6 @@ package engine.rendering;
 
 import engine.input.InputHandler;
 import engine.rendering.FaceRenderer.FaceDirection;
-import engine.rendering.FaceRenderer.FaceVertices;
 import engine.world.Chunk;
 import engine.world.ChunkMesh;
 import engine.world.World;
@@ -41,7 +40,7 @@ public class Renderer {
     private final ConcurrentHashMap<Long, MeshState> meshStates = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Integer, int[][]> radiusOffsetCache = new ConcurrentHashMap<>();
 
-    private final ExecutorService mesherPool = Executors.newFixedThreadPool(Math.max(1, Runtime.getRuntime().availableProcessors() / 2));
+    private final ExecutorService mesherPool = Executors.newFixedThreadPool(Math.max(1, (Runtime.getRuntime().availableProcessors() / 2) / 2));
 
     private static final int MAX_UPDATES_PER_FRAME = 4;
     private static final int MAX_BUILDS_PER_FRAME = 2;
@@ -49,7 +48,7 @@ public class Renderer {
     private final OutlineRenderer outline = new OutlineRenderer();
 
     private float timeOfDay01 = 0f;
-    private static final float DAY_LENGTH_SEC = 24f * 60f;
+    private static final float DAY_LENGTH_SEC = 4f * 60f;
 
     private enum MeshState { BUILDING, READY, GPU_LOADED }
 
@@ -278,8 +277,7 @@ public class Renderer {
 
         int updates = 0;
         while (updates < MAX_UPDATES_PER_FRAME) {
-            world.unloadFarChunks(cameraChunkX, cameraChunkZ, renderRadius);
-            world.ensureChunksAround(cameraChunkX, cameraChunkZ, renderRadius);
+            
             PendingMesh pm = pendingUpdates.poll();
             if (pm == null) break;
             ChunkMesh oldMesh = meshCache.get(pm.key);
@@ -315,14 +313,20 @@ public class Renderer {
                 buildsThisFrame++;
             }
 
-            if (mesh != null) mesh.drawOpaque();
+            if (mesh != null) {
+            	mesh.setProgram(shader.getProgramId());
+            	mesh.drawOpaque();
+            }
         }
 
         for (int i = 0; i < offsets.length; i++) {
             int dx = offsets[i][0], dz = offsets[i][1];
             int cx = cameraChunkX + dx, cz = cameraChunkZ + dz;
             ChunkMesh mesh = meshCache.get(pack(cx, cz));
-            if (mesh != null) mesh.drawTranslucent();
+            if (mesh != null) {
+            	mesh.setProgram(shader.getProgramId());
+            	mesh.drawTranslucent();
+            }
         }
 
         GL30.glBindVertexArray(0);
@@ -416,8 +420,8 @@ public class Renderer {
     }
 
     private PendingMesh buildChunkMesh(int cx, int cz, Chunk chunk) {
-        Map<Texture, FaceBatch> opaque = new HashMap<>(32);
-        Map<Texture, FaceBatch> trans  = new HashMap<>(8);
+        Map<Texture, FaceBatch> opaque = new HashMap<>(64);
+        Map<Texture, FaceBatch> trans  = new HashMap<>(16);
 
         final float baseX = cx * Chunk.SIZE;
         final float baseZ = cz * Chunk.SIZE;

@@ -77,53 +77,74 @@ public class VoxelEngine {
 	}
 
 	private void loop() {
-		final float TICK_RATE = 60.0f; 
-		final float TICK_DT = 1.0f / TICK_RATE;
-		final int MAX_TICKS_PER_FRAME = 5;
-		
-		double lastTime = GLFW.glfwGetTime();
-		float accumulator = 0f;
-		int frames = 0;
-		double lastFpsTime = lastTime;
-		
-		while (!GLFW.glfwWindowShouldClose(window) && running) {
-			double now = GLFW.glfwGetTime();
-			float frameTime = (float) (now - lastTime);
-			lastTime = now;
-			
-			if (frameTime > 0.25f)
-				frameTime = 0.25f;
-			
-			accumulator += frameTime;
-			
-			input.sampleInput();
-			
-			int ticksThisFrame = 0;
-			while (accumulator >= TICK_DT && ticksThisFrame < MAX_TICKS_PER_FRAME) {
-				input.applyMovement(TICK_DT);
-				physics.tick(TICK_DT, input.isJumpPressed(), input.isCrouchPressed());
-				renderer.tick(TICK_DT);
-				UIManager.get().tick((long)(TICK_DT * 1000));
-				accumulator -= TICK_DT;
-				ticksThisFrame++;
-			}
-			
-			renderer.render(input);
-			UIManager.get().render();
-			
-			GLFW.glfwSwapBuffers(window);
-			GLFW.glfwPollEvents();
-			
-			frames++;
-			if (now - lastFpsTime >= 1.0) {
-				Vector3f pos = camera.getPosition();
-				String title = String.format("Open-Voxel Engine - %s | FPS: %d | Pos: (%d, %d, %d) | Chunks: %s | Facing: %s", version, frames,
-						(int) pos.x, (int) pos.y, (int) pos.z, world.getChunks().entrySet().size(), camera.getFacing());
-				GLFW.glfwSetWindowTitle(window, title);
-				frames = 0;
-				lastFpsTime = now;
-			}
-		}
+	    final float GAME_TICK_RATE = 60.0f;
+	    final float GAME_DT = 1.0f / GAME_TICK_RATE;
+	    final int   MAX_GAME_TICKS_PER_FRAME = 5;
+
+	    final float WORLD_TICK_RATE = 20.0f;
+	    final float WORLD_DT = 1.0f / WORLD_TICK_RATE;
+	    final int   MAX_WORLD_TICKS_PER_FRAME = 1;
+
+	    double lastTime = GLFW.glfwGetTime();
+	    float gameAccum  = 0f;
+	    float worldAccum = 0f;
+
+	    int frames = 0;
+	    double lastFpsTime = lastTime;
+
+	    while (!GLFW.glfwWindowShouldClose(window) && running) {
+	    	renderer.render(input);
+	        UIManager.get().render();
+	        
+	        double now = GLFW.glfwGetTime();
+	        float frameTime = (float) (now - lastTime);
+	        lastTime = now;
+
+	        if (frameTime > 0.25f) frameTime = 0.25f;
+
+	        gameAccum  += frameTime;
+	        worldAccum += frameTime;
+
+	        frames++;
+	        if (now - lastFpsTime >= 1.0) {
+	            Vector3f pos = camera.getPosition();
+	            String title = String.format(
+	                "Open-Voxel Engine - %s | FPS: %d | Pos: (%d, %d, %d) | Chunks: %s | Facing: %s",
+	                version, frames,
+	                (int) pos.x, (int) pos.y, (int) pos.z,
+	                world.getChunks().entrySet().size(),
+	                camera.getFacing()
+	            );
+	            GLFW.glfwSetWindowTitle(window, title);
+	            frames = 0;
+	            lastFpsTime = now;
+	        }
+
+	        input.sampleInput();
+
+	        int gameTicks = 0;
+	        while (gameAccum >= GAME_DT && gameTicks < MAX_GAME_TICKS_PER_FRAME) {
+	            input.applyMovement(GAME_DT);
+	            physics.tick(GAME_DT, input.isJumpPressed(), input.isCrouchPressed());
+	            renderer.tick(GAME_DT);
+	            UIManager.get().tick((long)(GAME_DT * 1000));
+
+	            gameAccum -= GAME_DT;
+	            gameTicks++;
+	        }
+
+	        int worldTicks = 0;
+	        while (worldAccum >= WORLD_DT && worldTicks < MAX_WORLD_TICKS_PER_FRAME) {
+	        	world.tick(camera, WORLD_DT); // can be slow, but capped
+	            worldAccum -= WORLD_DT;
+	            worldTicks++;
+	        }
+
+	        GLFW.glfwSwapBuffers(window);
+	        GLFW.glfwPollEvents();
+
+	        
+	    }
 	}
 
 	public void cleanup() {

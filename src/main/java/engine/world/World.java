@@ -4,12 +4,25 @@ import java.io.*;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+import engine.rendering.Camera;
 import engine.world.block.BlockType;
 import engine.world.saving.SaveManager;
 
 
 public class World {
+	private static final AbstractBlock BEDROCK_BLOCK = new AbstractBlock(BlockType.BEDROCK);
+	private static final AbstractBlock STONE_BLOCK   = new AbstractBlock(BlockType.STONE);
+	private static final AbstractBlock DIRT_BLOCK    = new AbstractBlock(BlockType.DIRT);
+	private static final AbstractBlock SAND_BLOCK    = new AbstractBlock(BlockType.SAND);
+	private static final AbstractBlock WATER_BLOCK   = new AbstractBlock(BlockType.WATER);
+	private static final AbstractBlock AIR_BLOCK     = new AbstractBlock(BlockType.AIR);
+	
+	private final ExecutorService chunkPool = Executors.newFixedThreadPool(1);
+	
+	
     private final Map<Long, Chunk> chunks = new ConcurrentHashMap<>();
     private SaveManager saveManager;
 
@@ -131,7 +144,7 @@ public class World {
         // Bedrock base (y=0) for the whole chunk
         for (int x = 0; x < Chunk.SIZE; x++) {
             for (int z = 0; z < Chunk.SIZE; z++) {
-                chunk.setBlock(x, 0, z, new AbstractBlock(BlockType.BEDROCK));
+                chunk.setBlock(x, 0, z, BEDROCK_BLOCK);
             }
         }
 
@@ -153,7 +166,7 @@ public class World {
 
                 int deepTop = (height - SOIL_DEPTH) - 1;
                 if (deepTop >= 1) {
-                    chunk.fill(x, z, 1, deepTop, new AbstractBlock(BlockType.STONE));
+                    chunk.fill(x, z, 1, deepTop, STONE_BLOCK);
                 }
 
                 int bodyStart = Math.max(1, height - SOIL_DEPTH);
@@ -161,21 +174,21 @@ public class World {
 
                 if (bodyStart <= bodyEnd) {
                     if (beach) {
-                        chunk.fill(x, z, bodyStart, bodyEnd, new AbstractBlock(BlockType.STONE));
+                        chunk.fill(x, z, bodyStart, bodyEnd, STONE_BLOCK);
 
                         int dirtA = Math.max(bodyStart, height - 3);
                         int dirtB = Math.min(bodyEnd, (SEA_LEVEL - 3) - 1); // up to SEA_LEVEL-4
                         if (dirtA <= dirtB) {
-                            chunk.fill(x, z, dirtA, dirtB, new AbstractBlock(BlockType.DIRT));
+                            chunk.fill(x, z, dirtA, dirtB, DIRT_BLOCK);
                         }
                     } else {
                         // Normal hill: stone up to (height-3), then dirt to (height-2)
                         int dirtStart = Math.max(bodyStart, height - 3);
                         if (bodyStart <= dirtStart - 1) {
-                            chunk.fill(x, z, bodyStart, dirtStart - 1, new AbstractBlock(BlockType.STONE));
+                            chunk.fill(x, z, bodyStart, dirtStart - 1, STONE_BLOCK);
                         }
                         if (dirtStart <= bodyEnd) {
-                            chunk.fill(x, z, dirtStart, bodyEnd, new AbstractBlock(BlockType.DIRT));
+                            chunk.fill(x, z, dirtStart, bodyEnd, DIRT_BLOCK);
                         }
                     }
                 }
@@ -198,10 +211,6 @@ public class World {
                 if (topY + 1 <= SEA_LEVEL) {
                     chunk.fill(x, z, topY + 1, SEA_LEVEL, new AbstractBlock(BlockType.WATER));
                 }
-                int airStart = Math.max(topY + 1, SEA_LEVEL + 1);
-                if (airStart <= Chunk.HEIGHT - 1) {
-                    chunk.fill(x, z, airStart, Chunk.HEIGHT - 1, new AbstractBlock(BlockType.AIR));
-                }
             }
         }
 
@@ -212,4 +221,20 @@ public class World {
 		}
         return chunk;
     }
+
+
+
+
+
+	public void tick(Camera camera, float tICK_DT) {
+		chunkPool.submit(() -> {
+			int cameraChunkX = Math.floorDiv((int) camera.getPosition().x, Chunk.SIZE);
+	        int cameraChunkZ = Math.floorDiv((int) camera.getPosition().z, Chunk.SIZE);
+	        int renderRadius = camera.getRenderDistance();
+	        
+			unloadFarChunks(cameraChunkX, cameraChunkZ, renderRadius);
+	        ensureChunksAround(cameraChunkX, cameraChunkZ, renderRadius);
+		});
+		
+	}
 }

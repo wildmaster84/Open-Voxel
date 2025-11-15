@@ -53,25 +53,31 @@ public class Chunk {
         dirty = true;
     }
     
-    
-
     public void fill(int x, int z, int y0, int y1, AbstractBlock block) {
         if (x < 0 || x >= SIZE || z < 0 || z >= SIZE) return;
-        if (y0 > y1) { int t = y0; y0 = y1; y1 = t; }
-        y0 = Math.max(0, y0);
-        y1 = Math.min(HEIGHT - 1, y1);
-        int s0 = y0 >>> 4, s1 = y1 >>> 4;
+
+        if (y0 > y1) {
+            int t = y0; y0 = y1; y1 = t;
+        }
+
+        if (y1 < 0 || y0 >= HEIGHT) return;
+        if (y0 < 0) y0 = 0;
+        if (y1 >= HEIGHT) y1 = HEIGHT - 1;
+
+        final int state = block.getState();
+
+        int s0 = y0 >>> 4;
+        int s1 = y1 >>> 4;
+
         for (int s = s0; s <= s1; s++) {
-            var sec = sections[s];
+            BlockSectionStorage sec = sections[s];
             int ly0 = (s == s0) ? (y0 & 15) : 0;
             int ly1 = (s == s1) ? (y1 & 15) : 15;
-            for (int ly = ly0; ly <= ly1; ly++) {
-                sec.setId(x, ly, z, block.getState());
-            }
+            sec.fillColumn(x, z, ly0, ly1, state);
         }
+
         dirty = true;
     }
-    
 
     private BlockSectionStorage sectionFor(int y) {
         return sections[y >>> 4];
@@ -121,7 +127,6 @@ public class Chunk {
     }
     
     public void write(java.io.DataOutput out) throws java.io.IOException {
-        // Write section count for forward compatibility
         out.writeInt(SECTION_COUNT);
         for (int i = 0; i < SECTION_COUNT; i++) {
             byte[] secBytes = sections[i].serialize();
