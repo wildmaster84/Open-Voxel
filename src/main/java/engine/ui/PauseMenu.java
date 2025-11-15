@@ -90,7 +90,6 @@ public class PauseMenu extends GUI {
         }
         
         if (GLUIRenderer.isPointInRect(x, y, buttonX, buttonY + 60, BUTTON_WIDTH, BUTTON_HEIGHT)) {
-        	camera.getWorld().save();
             VoxelEngine.getEngine().cleanup();
             System.exit(0);
         }

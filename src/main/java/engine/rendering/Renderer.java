@@ -1,8 +1,9 @@
 package engine.rendering;
 
+import engine.VoxelEngine;
 import engine.input.InputHandler;
+import engine.light.LightEngine;
 import engine.rendering.FaceRenderer.FaceDirection;
-import engine.rendering.FaceRenderer.FaceVertices;
 import engine.world.Chunk;
 import engine.world.ChunkMesh;
 import engine.world.World;
@@ -35,21 +36,26 @@ public class Renderer {
 
     private final FloatBuffer matBuffer = MemoryUtil.memAllocFloat(16);
 
-    // Mesh management
     private final Map<Long, ChunkMesh> meshCache = new HashMap<>();
     private final ConcurrentLinkedQueue<PendingMesh> pendingUpdates = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<PendingLightingUpdate> pendingLightingUpdates = new ConcurrentLinkedQueue<>();
     private final ConcurrentHashMap<Long, MeshState> meshStates = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Integer, int[][]> radiusOffsetCache = new ConcurrentHashMap<>();
 
-    private final ExecutorService mesherPool = Executors.newFixedThreadPool(Math.max(1, Runtime.getRuntime().availableProcessors() / 2));
+    private final ExecutorService mesherPool = Executors.newFixedThreadPool(Math.max(1, (Runtime.getRuntime().availableProcessors() / 2) / 2));
+    private final ExecutorService lightingPool = Executors.newFixedThreadPool(Math.max(1, (Runtime.getRuntime().availableProcessors() / 2) / 2));
 
+    private static final int MAX_LIGHTING_UPDATES_PER_FRAME = 32;
     private static final int MAX_UPDATES_PER_FRAME = 4;
     private static final int MAX_BUILDS_PER_FRAME = 2;
+    private static final int LIGHT_UPDATE_INTERVAL_TICKS = 5;
+    
+    private int lightTickCounter = 0;
 
     private final OutlineRenderer outline = new OutlineRenderer();
-
+    
     private float timeOfDay01 = 0f;
-    private static final float DAY_LENGTH_SEC = 24f * 60f;
+    private static final float DAY_LENGTH_SEC = 4f * 60f;
 
     private enum MeshState { BUILDING, READY, GPU_LOADED }
 
@@ -58,12 +64,33 @@ public class Renderer {
 
     private final class PendingMesh {
         final long key;
+        final int cx, cz;
         final Map<Texture, float[]> opaque;
         final Map<Texture, float[]> translucent;
-        PendingMesh(long key, Map<Texture, float[]> opaque, Map<Texture, float[]> translucent) {
+        final boolean computeLightingImmediately;
+        final Map<Texture, float[]> opaqueLighting;
+        final Map<Texture, float[]> translucentLighting;
+        PendingMesh(long key, int cx, int cz, Map<Texture, float[]> opaque, Map<Texture, float[]> translucent, boolean computeLightingImmediately,
+                    Map<Texture, float[]> opaqueLighting, Map<Texture, float[]> translucentLighting) {
             this.key = key;
+            this.cx = cx;
+            this.cz = cz;
             this.opaque = opaque;
             this.translucent = translucent;
+            this.computeLightingImmediately = computeLightingImmediately;
+            this.opaqueLighting = opaqueLighting;
+            this.translucentLighting = translucentLighting;
+        }
+    }
+
+    private final class PendingLightingUpdate {
+        final long key;
+        final Map<Texture, float[]> opaqueLighting;
+        final Map<Texture, float[]> translucentLighting;
+        PendingLightingUpdate(long key, Map<Texture, float[]> opaqueLighting, Map<Texture, float[]> translucentLighting) {
+            this.key = key;
+            this.opaqueLighting = opaqueLighting;
+            this.translucentLighting = translucentLighting;
         }
     }
 
@@ -112,8 +139,10 @@ public class Renderer {
             "layout(location = 0) in vec3 position;\n" +
             "layout(location = 1) in vec2 texCoord;\n" +
             "layout(location = 2) in float ao;\n" +
+            "layout(location = 3) in float lighting;\n" +
             "out vec2 vTexCoord;\n" +
             "out float vAO;\n" +
+            "out float vLighting;\n" +
             "uniform mat4 projection;\n" +
             "uniform mat4 view;\n" +
             "uniform mat4 model;\n" +
@@ -122,23 +151,48 @@ public class Renderer {
             "  gl_Position = projection * view * model * worldPos;\n" +
             "  vTexCoord = texCoord;\n" +
             "  vAO = ao;\n" +
+            "  vLighting = lighting;\n" +
             "}";
         String fragmentSrc =
-            "#version 330 core\n" +
-            "in vec2 vTexCoord;\n" +
-            "in float vAO;\n" +
-            "out vec4 FragColor;\n" +
-            "uniform sampler2D blockTexture;\n" +
-            "uniform float uFrameOffset;\n" +
-            "uniform float uFrameScale;\n" +
-            "uniform float uSunlight;\n" +
-            "void main() {\n" +
-            "  vec2 coord = vec2(vTexCoord.x, vTexCoord.y * uFrameScale + uFrameOffset);\n" +
-            "  vec4 tex = texture(blockTexture, coord);\n" +
-            "  float base = mix(0.12, 0.95, clamp(uSunlight, 0.0, 1.0));\n" +
-            "  float lit = base * vAO;\n" +
-            "  FragColor = vec4(tex.rgb * lit, tex.a);\n" +
-            "}";
+        	      "#version 330 core\n"
+        	    + "in vec2 vTexCoord;\n"
+        	    + "in float vAO;\n"
+        	    + "in float vLighting;\n"
+        	    + "in vec4 vLightSpacePos; // unused now, but we keep the varying\n"
+        	    + "\n"
+        	    + "out vec4 FragColor;\n"
+        	    + "\n"
+        	    + "uniform sampler2D blockTexture;\n"
+        	    + "uniform float uFrameOffset;\n"
+        	    + "uniform float uFrameScale;\n"
+        	    + "uniform float uSunlight;\n"
+        	    + "\n"
+        	    + "void main() {\n"
+        	    + "  // Sample from atlas (animated)\n"
+        	    + "  vec2 coord = vec2(vTexCoord.x, vTexCoord.y * uFrameScale + uFrameOffset);\n"
+        	    + "  vec4 tex = texture(blockTexture, coord);\n"
+        	    + "  if (tex.a <= 0.1) discard;\n"
+        	    + "\n"
+        	    + "  // Clamp AO just in case\n"
+        	    + "  float ao = clamp(vAO, 0.0, 1.0);\n"
+        	    + "\n"
+        	    + "  // Use per-vertex lighting if available (>= 0), otherwise fall back to uniform lighting\n"
+        	    + "  // Note: vLighting is initialized to -1.0 when not yet computed, 0.0+ when computed\n"
+        	    + "  float brightness;\n"
+        	    + "  if (vLighting >= 0.0) {\n"
+        	    + "    // Use per-vertex lighting directly (already includes day/night and skylight)\n"
+        	    + "    brightness = vLighting * ao;\n"
+        	    + "  } else {\n"
+        	    + "    // Fallback: uniform lighting for meshes where per-vertex data hasn't arrived yet\n"
+        	    + "    float day = clamp(uSunlight, 0.0, 1.0);\n"
+        	    + "    brightness = mix(0.02, 0.9, day) * ao;\n"
+        	    + "  }\n"
+        	    + "  // Ensure we never hit pure black\n"
+        	    + "  brightness = max(brightness, 0.12);\n"
+        	    + "\n"
+        	    + "  FragColor = vec4(tex.rgb * brightness, tex.a);\n"
+        	    + "}\n";
+
 
         shader = new ShaderProgram(vertexSrc, fragmentSrc);
     }
@@ -249,6 +303,13 @@ public class Renderer {
                 if (tex instanceof AnimatedTexture) ((AnimatedTexture) tex).update(dt);
             }
         }
+        
+        lightTickCounter++;
+        if (lightTickCounter >= LIGHT_UPDATE_INTERVAL_TICKS) {
+            lightTickCounter = 0;
+            updateLightingInView();
+            
+        }
     }
 
     public void render(InputHandler input) {
@@ -276,10 +337,20 @@ public class Renderer {
 
         GL30.glBindVertexArray(vaoId);
 
+        int lightUpdates = 0;
+        while (lightUpdates < MAX_LIGHTING_UPDATES_PER_FRAME) {
+            PendingLightingUpdate plu = pendingLightingUpdates.poll();
+            if (plu == null) break;
+            ChunkMesh mesh = meshCache.get(plu.key);
+            if (mesh != null) {
+                applyLightingUpdate(mesh, plu);
+            }
+            lightUpdates++;
+        }
+
         int updates = 0;
         while (updates < MAX_UPDATES_PER_FRAME) {
-            world.unloadFarChunks(cameraChunkX, cameraChunkZ, renderRadius);
-            world.ensureChunksAround(cameraChunkX, cameraChunkZ, renderRadius);
+            
             PendingMesh pm = pendingUpdates.poll();
             if (pm == null) break;
             ChunkMesh oldMesh = meshCache.get(pm.key);
@@ -287,6 +358,31 @@ public class Renderer {
             meshCache.put(pm.key, mesh);
             meshStates.put(pm.key, MeshState.GPU_LOADED);
             if (oldMesh != null) oldMesh.delete();
+            
+            final int cx = pm.cx, cz = pm.cz;
+            if (pm.opaqueLighting != null || pm.translucentLighting != null) {
+                if (pm.opaqueLighting != null) {
+                    for (Map.Entry<Texture, float[]> e : pm.opaqueLighting.entrySet()) {
+                        mesh.updateLighting(e.getKey(), e.getValue(), true);
+                    }
+                }
+                if (pm.translucentLighting != null) {
+                    for (Map.Entry<Texture, float[]> e : pm.translucentLighting.entrySet()) {
+                        mesh.updateLighting(e.getKey(), e.getValue(), false);
+                    }
+                }
+            } else {
+                lightingPool.submit(() -> {
+                    Chunk chunk = world.getChunkIfLoaded(cx, cz);
+                    if (chunk != null) {
+                        PendingLightingUpdate lightUpdate = buildLightingUpdate(cx, cz, chunk);
+                        if (lightUpdate != null) {
+                            pendingLightingUpdates.add(lightUpdate);
+                        }
+                    }
+                });
+            }
+            
             updates++;
         }
 
@@ -308,21 +404,27 @@ public class Renderer {
                 meshStates.put(key, MeshState.BUILDING);
                 final int fcx = cx, fcz = cz;
                 mesherPool.submit(() -> {
-                    PendingMesh built = buildChunkMesh(fcx, fcz, chunk);
+                    PendingMesh built = buildChunkMesh(fcx, fcz, chunk, false);
                     pendingUpdates.add(built);
                     meshStates.put(built.key, MeshState.READY);
                 });
                 buildsThisFrame++;
             }
 
-            if (mesh != null) mesh.drawOpaque();
+            if (mesh != null) {
+            	mesh.setProgram(shader.getProgramId());
+            	mesh.drawOpaque();
+            }
         }
 
         for (int i = 0; i < offsets.length; i++) {
             int dx = offsets[i][0], dz = offsets[i][1];
             int cx = cameraChunkX + dx, cz = cameraChunkZ + dz;
             ChunkMesh mesh = meshCache.get(pack(cx, cz));
-            if (mesh != null) mesh.drawTranslucent();
+            if (mesh != null) {
+            	mesh.setProgram(shader.getProgramId());
+            	mesh.drawTranslucent();
+            }
         }
 
         GL30.glBindVertexArray(0);
@@ -336,22 +438,53 @@ public class Renderer {
             drawUnderwaterOverlay(strength);
         }
 
-        // outline for hovered block
         if (input != null) {
             var h = input.getHoverHit();
             if (h != null) drawHoverOutline(h);
         }
     }
+    
+    private void updateLightingInView() {
+        int cameraChunkX = Math.floorDiv((int) camera.getPosition().x, Chunk.SIZE);
+        int cameraChunkZ = Math.floorDiv((int) camera.getPosition().z, Chunk.SIZE);
+        int renderRadius = camera.getRenderDistance();
+
+        int[][] offsets = getOffsetsSortedByDistance(renderRadius);
+        for (int i = 0; i < offsets.length; i++) {
+            int dx = offsets[i][0];
+            int dz = offsets[i][1];
+            int cx = cameraChunkX + dx;
+            int cz = cameraChunkZ + dz;
+            invalidateChunkLight(cx, cz);
+        }
+    }
+
 
     public void invalidateChunk(int cx, int cz) {
         long key = pack(cx, cz);
-        meshStates.put(key, MeshState.BUILDING);
+        meshStates.put(key, MeshState.BUILDING);        
         Chunk chunk = world.getChunkIfLoaded(cx, cz);
         if (chunk == null) return;
         mesherPool.submit(() -> {
-            PendingMesh built = buildChunkMesh(cx, cz, chunk);
+            PendingMesh built = buildChunkMesh(cx, cz, chunk, true);
             pendingUpdates.add(built);
             meshStates.put(built.key, MeshState.READY);
+        });
+    }
+    
+    public void invalidateChunkLight(int cx, int cz) {
+        long key = pack(cx, cz);
+        Chunk chunk = world.getChunkIfLoaded(cx, cz);
+        if (chunk == null) return;
+        
+        ChunkMesh existingMesh = meshCache.get(key);
+        if (existingMesh == null) return;
+        
+        lightingPool.submit(() -> {
+            PendingLightingUpdate lightUpdate = buildLightingUpdate(cx, cz, chunk);
+            if (lightUpdate != null) {
+                pendingLightingUpdates.add(lightUpdate);
+            }
         });
     }
 
@@ -415,9 +548,9 @@ public class Renderer {
         mesherPool.shutdownNow();
     }
 
-    private PendingMesh buildChunkMesh(int cx, int cz, Chunk chunk) {
-        Map<Texture, FaceBatch> opaque = new HashMap<>(32);
-        Map<Texture, FaceBatch> trans  = new HashMap<>(8);
+    private PendingMesh buildChunkMesh(int cx, int cz, Chunk chunk, boolean computeLightingImmediately) {
+        Map<Texture, FaceBatch> opaque = new HashMap<>(64);
+        Map<Texture, FaceBatch> trans  = new HashMap<>(16);
 
         final float baseX = cx * Chunk.SIZE;
         final float baseZ = cz * Chunk.SIZE;
@@ -475,7 +608,215 @@ public class Renderer {
         Map<Texture, float[]> perTrans = new HashMap<>(trans.size());
         for (Map.Entry<Texture, FaceBatch> e : trans.entrySet()) perTrans.put(e.getKey(), e.getValue().toArray());
 
-        return new PendingMesh(pack(cx, cz), perOpaque, perTrans);
+        Map<Texture, float[]> opaqueLighting = null;
+        Map<Texture, float[]> translucentLighting = null;
+        if (computeLightingImmediately) {
+            PendingLightingUpdate lightUpdate = buildLightingUpdate(cx, cz, chunk);
+            if (lightUpdate != null) {
+                opaqueLighting = lightUpdate.opaqueLighting;
+                translucentLighting = lightUpdate.translucentLighting;
+            }
+        }
+
+        return new PendingMesh(pack(cx, cz), cx, cz, perOpaque, perTrans, computeLightingImmediately, opaqueLighting, translucentLighting);
+    }
+
+    private PendingLightingUpdate buildLightingUpdate(int cx, int cz, Chunk chunk) {
+        VoxelEngine.getLightEngine().rebuildSkylightForChunk(world, cx, cz, chunk);
+        
+        byte[] skylightData = VoxelEngine.getLightEngine().getSkylightArray(cx, cz);
+        if (skylightData == null) return null;
+
+        Map<Texture, LightBatch> opaqueLight = new HashMap<>();
+        Map<Texture, LightBatch> transLight = new HashMap<>();
+        
+        final float baseX = cx * Chunk.SIZE;
+        final float baseZ = cz * Chunk.SIZE;
+        float dayFactor = dayAmount(timeOfDay01);
+        
+        for (int x = 0; x < Chunk.SIZE; x++) {
+            for (int y = 0; y < Chunk.HEIGHT; y++) {
+                for (int z = 0; z < Chunk.SIZE; z++) {
+                    final int state = chunk.getState(x, y, z);
+                    if (isAirState(state)) continue;
+
+                    final int tid = BlockState.typeId(state);
+                    BlockType type = BlockType.fromId(tid);
+                    if (type == null || type == BlockType.AIR) continue;
+
+                    float wx = baseX + x, wy = y, wz = baseZ + z;
+
+                    if (tid == BlockType.STAIR.getId()) {
+                        addStairLighting(opaqueLight, type, state, wx, wy, wz, dayFactor);
+                        continue;
+                    }
+
+                    for (int face = 0; face < 6; face++) {
+                        int nState = getNeighborStateOrAir(world, cx, cz, x, y, z, face);
+                        int nTid = BlockState.typeId(nState);
+
+                        if (tid == BlockType.WATER.getId()) {
+                            handleWaterFaceLighting(opaqueLight, transLight, cx, cz, x, y, z, face, nState, type, wx, wy, wz, dayFactor);
+                            continue;
+                        }
+
+                        if (tid == BlockType.GLASS.getId()) {
+                            handleGlassFaceLighting(transLight, world, cx, cz, x, y, z, face, nState, type, wx, wy, wz, dayFactor);
+                            continue;
+                        }
+
+                        if (nTid == BlockType.GLASS.getId()) {
+                            addFaceLighting(opaqueLight, type.getTextureForFace(face), wx, wy, wz, face, dayFactor);
+                            continue;
+                        }
+
+                        if (!shouldRenderFaceByState(world, cx, cz, x, y, z, face)) continue;
+                        boolean isTranslucent = (type == BlockType.WATER);
+                        if (isTranslucent) {
+                            addFaceLighting(transLight, type.getTextureForFace(face), wx, wy, wz, face, dayFactor);
+                        } else {
+                            addFaceLighting(opaqueLight, type.getTextureForFace(face), wx, wy, wz, face, dayFactor);
+                        }
+                    }
+                }
+            }
+        }
+
+        Map<Texture, float[]> opaqueLighting = new HashMap<>();
+        Map<Texture, float[]> translucentLighting = new HashMap<>();
+        
+        for (Map.Entry<Texture, LightBatch> e : opaqueLight.entrySet()) {
+            opaqueLighting.put(e.getKey(), e.getValue().toArray());
+        }
+        for (Map.Entry<Texture, LightBatch> e : transLight.entrySet()) {
+            translucentLighting.put(e.getKey(), e.getValue().toArray());
+        }
+
+        return new PendingLightingUpdate(pack(cx, cz), opaqueLighting, translucentLighting);
+    }
+
+    private void addStairLighting(Map<Texture, LightBatch> opaqueLight, BlockType type, int state, float wx, float wy, float wz, float dayFactor) {
+        Texture tex = type.getTextureForFace(0);
+        if (tex == null) return;
+        LightBatch lb = opaqueLight.computeIfAbsent(tex, k -> new LightBatch(256 * 6));
+        float lightValue = VoxelEngine.getLightEngine().sampleSkyLight01((int)wx, (int)wy, (int)wz, dayFactor);
+        for (int v = 0; v < 6; v++) {
+            lb.addLight(lightValue);
+        }
+    }
+
+    private void handleWaterFaceLighting(Map<Texture, LightBatch> opaqueLight, Map<Texture, LightBatch> transLight,
+                                         int cx, int cz, int x, int y, int z, int face, int nState,
+                                         BlockType type, float wx, float wy, float wz, float dayFactor) {
+        int aboveState = getNeighborStateOrAir(world, cx, cz, x, y, z, 0);
+        boolean isTopWater = !isLiquidState(aboveState);
+
+        if (face == 0 && isTopWater) {
+            if (!isAirState(nState)) return;
+            Texture tex = type.getTextureForFace(0);
+            if (tex == null) return;
+            
+            int[] nrm = FaceRenderer.FaceDirection.get(face);
+            int gx = (int) wx + nrm[0];
+            int gy = (int) wy + nrm[1];
+            int gz = (int) wz + nrm[2];
+            float lightValue = VoxelEngine.getLightEngine().sampleSkyLight01(gx, gy, gz, dayFactor);
+            
+            LightBatch lb = transLight.computeIfAbsent(tex, k -> new LightBatch(256 * 6));
+            for (int v = 0; v < 6; v++) {
+                lb.addLight(lightValue - 0.2f);
+            }
+            return;
+        }
+
+        if (!isLiquidState(nState)) {
+            if (!isAirState(nState)) return;
+            Texture tex = type.getTextureForFace(0);
+            if (tex == null) return;
+            
+            int[] nrm = FaceRenderer.FaceDirection.get(face);
+            int gx = (int) wx + nrm[0];
+            int gy = (int) wy + nrm[1];
+            int gz = (int) wz + nrm[2];
+            float lightValue = VoxelEngine.getLightEngine().sampleSkyLight01(gx, gy, gz, dayFactor);
+            
+            LightBatch lb = transLight.computeIfAbsent(tex, k -> new LightBatch(256 * 6));
+            for (int v = 0; v < 6; v++) {
+                lb.addLight(lightValue);
+            }
+            return;
+        }
+
+        if (!isAirState(nState)) return;
+    }
+
+    private void handleGlassFaceLighting(Map<Texture, LightBatch> transLight, World world,
+                                         int cx, int cz, int x, int y, int z, int face, int nState,
+                                         BlockType type, float wx, float wy, float wz, float dayFactor) {
+        int nTid = BlockState.typeId(nState);
+        if (nTid == BlockType.GLASS.getId()) return;
+
+        if (!(isAirState(nState) || isLiquidState(nState) || !stateFullyOccludes(nState, face))) return;
+
+        Texture tex = type.getTextureForFace(face);
+        if (tex == null) return;
+        
+        int[] nrm = FaceDirection.get(face);
+        int gx = (int) wx + nrm[0];
+        int gy = (int) wy + nrm[1];
+        int gz = (int) wz + nrm[2];
+        float lightValue = VoxelEngine.getLightEngine().sampleSkyLight01(gx, gy, gz, dayFactor);
+        
+        LightBatch lb = transLight.computeIfAbsent(tex, k -> new LightBatch(256 * 6));
+        for (int v = 0; v < 6; v++) {
+            lb.addLight(lightValue);
+        }
+    }
+
+    private void addFaceLighting(Map<Texture, LightBatch> batch, Texture tex, float wx, float wy, float wz, int face, float dayFactor) {
+        if (tex == null) return;
+        
+        int[] nrm = FaceDirection.get(face);
+        int gx = (int) wx + nrm[0];
+        int gy = (int) wy + nrm[1];
+        int gz = (int) wz + nrm[2];
+        
+        float lightValue = VoxelEngine.getLightEngine().sampleSkyLight01(gx, gy, gz, dayFactor);
+        
+        LightBatch lb = batch.computeIfAbsent(tex, k -> new LightBatch(256 * 6));
+        for (int v = 0; v < 6; v++) {
+            lb.addLight(lightValue);
+        }
+    }
+
+    private void applyLightingUpdate(ChunkMesh mesh, PendingLightingUpdate plu) {
+        for (Map.Entry<Texture, float[]> e : plu.opaqueLighting.entrySet()) {
+            mesh.updateLighting(e.getKey(), e.getValue(), true);
+        }
+        for (Map.Entry<Texture, float[]> e : plu.translucentLighting.entrySet()) {
+            mesh.updateLighting(e.getKey(), e.getValue(), false);
+        }
+    }
+
+    private static final class LightBatch {
+        private float[] data;
+        private int size;
+        LightBatch(int initialFloats) {
+            data = new float[Math.max(initialFloats, 6)];
+            size = 0;
+        }
+        void ensure(int moreFloats) {
+            int need = size + moreFloats;
+            if (need > data.length) {
+                int newCap = Math.max(need, data.length + (data.length >> 1));
+                data = java.util.Arrays.copyOf(data, newCap);
+            }
+        }
+        void addLight(float value) {
+            ensure(1);
+            data[size++] = value;
+        }
+        float[] toArray() { return Arrays.copyOf(data, size); }
     }
 
     private void addStairFaces(Map<Texture, FaceBatch> opaque, BlockType type, int state, float wx, float wy, float wz) {
@@ -600,6 +941,8 @@ public class Renderer {
             Texture tex = e.getKey();
             float[] verts = e.getValue();
             if (verts.length == 0) continue;
+            int vertexCount = verts.length / 6;
+            
             int vbo = GL30.glGenBuffers();
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vbo);
             FloatBuffer buf = MemoryUtil.memAllocFloat(verts.length);
@@ -607,13 +950,26 @@ public class Renderer {
             GL30.glBufferData(GL30.GL_ARRAY_BUFFER, buf, GL30.GL_STATIC_DRAW);
             MemoryUtil.memFree(buf);
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
-            mesh.addOpaque(tex, vbo, verts.length / 6);
+            
+            int lightVbo = GL30.glGenBuffers();
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, lightVbo);
+            float[] lightData = new float[vertexCount];
+            Arrays.fill(lightData, -1.0f);
+            FloatBuffer lightBuf = MemoryUtil.memAllocFloat(vertexCount);
+            lightBuf.put(lightData).flip();
+            GL30.glBufferData(GL30.GL_ARRAY_BUFFER, lightBuf, GL30.GL_DYNAMIC_DRAW);
+            MemoryUtil.memFree(lightBuf);
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
+            
+            mesh.addOpaque(tex, vbo, vertexCount, lightVbo);
         }
 
         for (Map.Entry<Texture, float[]> e : pm.translucent.entrySet()) {
             Texture tex = e.getKey();
             float[] verts = e.getValue();
             if (verts.length == 0) continue;
+            int vertexCount = verts.length / 6;
+            
             int vbo = GL30.glGenBuffers();
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vbo);
             FloatBuffer buf = MemoryUtil.memAllocFloat(verts.length);
@@ -621,7 +977,18 @@ public class Renderer {
             GL30.glBufferData(GL30.GL_ARRAY_BUFFER, buf, GL30.GL_STATIC_DRAW);
             MemoryUtil.memFree(buf);
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
-            mesh.addTranslucent(tex, vbo, verts.length / 6);
+            
+            int lightVbo = GL30.glGenBuffers();
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, lightVbo);
+            float[] lightData = new float[vertexCount];
+            Arrays.fill(lightData, -1.0f);
+            FloatBuffer lightBuf = MemoryUtil.memAllocFloat(vertexCount);
+            lightBuf.put(lightData).flip();
+            GL30.glBufferData(GL30.GL_ARRAY_BUFFER, lightBuf, GL30.GL_DYNAMIC_DRAW);
+            MemoryUtil.memFree(lightBuf);
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
+            
+            mesh.addTranslucent(tex, vbo, vertexCount, lightVbo);
         }
 
         return mesh;
