@@ -24,22 +24,26 @@ public class Texture {
 
             STBImage.stbi_set_flip_vertically_on_load(true);
 
-            // Try loading from classpath (inside jar)
-            image = loadImageFromResource(filepath, w, h, channels);
+            // Load from texture folder
+            image = STBImage.stbi_load(Path.of("./", filepath).toString(), w, h, channels, 4);
             if (image == null) {
-                // Fallback to disk (for dev convenience)
-                image = STBImage.stbi_load(Path.of("./src/main", filepath).toString(), w, h, channels, 4);
-                if (image == null) {
-                    // Also try debug.png from disk (for dev)
-                	image = STBImage.stbi_load(Path.of("./src/main", "resources/textures/debug.png").toString(), w, h, channels, 4);
-                    if (image == null) {
-                        // Also try debug.png from disk (for dev)
-                        image = STBImage.stbi_load(Path.of("./src/main", "textures/debug.png").toString(), w, h, channels, 4);
-                    }
-                }
+            // Try loading from classpath (inside jar)
+	            image = loadImageFromResource(filepath, w, h, channels);
+	            if (image == null) {
+	                // Fallback to disk (for dev convenience)
+	                image = STBImage.stbi_load(Path.of("./src/main", filepath).toString(), w, h, channels, 4);
+	                if (image == null) {
+	                    // Also try debug.png from disk (for dev)
+	                	image = STBImage.stbi_load(Path.of("./src/main", "resources/textures/debug.png").toString(), w, h, channels, 4);
+	                    if (image == null) {
+	                        // Also try debug.png from disk (for dev)
+	                        image = STBImage.stbi_load(Path.of("./src/main", "textures/debug.png").toString(), w, h, channels, 4);
+	                    }
+	                }
+	            }
             }
             if (image == null) {
-                throw new RuntimeException("Failed to load texture: " + filepath);
+            	throw new RuntimeException("Failed to load texture: " + filepath);
             }
 
             width = w.get();
