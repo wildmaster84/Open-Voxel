@@ -357,14 +357,17 @@ public class Renderer {
             meshStates.put(pm.key, MeshState.GPU_LOADED);
             if (oldMesh != null) oldMesh.delete();
             
-            // Immediately compute and apply lighting for the new mesh
-            Chunk chunk = world.getChunkIfLoaded(pm.cx, pm.cz);
-            if (chunk != null) {
-                PendingLightingUpdate lightUpdate = buildLightingUpdate(pm.cx, pm.cz, chunk);
-                if (lightUpdate != null) {
-                    applyLightingUpdate(mesh, lightUpdate);
+            // Schedule async lighting computation for the new mesh (don't block render thread)
+            final int cx = pm.cx, cz = pm.cz;
+            lightingPool.submit(() -> {
+                Chunk chunk = world.getChunkIfLoaded(cx, cz);
+                if (chunk != null) {
+                    PendingLightingUpdate lightUpdate = buildLightingUpdate(cx, cz, chunk);
+                    if (lightUpdate != null) {
+                        pendingLightingUpdates.add(lightUpdate);
+                    }
                 }
-            }
+            });
             
             updates++;
         }
@@ -965,11 +968,11 @@ public class Renderer {
             MemoryUtil.memFree(buf);
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
             
-            // Create lighting VBO with default values (1.0 = full bright for backward compatibility)
+            // Create lighting VBO with default values (0.0 = use fallback uniform lighting until real data arrives)
             int lightVbo = GL30.glGenBuffers();
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, lightVbo);
             float[] lightData = new float[vertexCount];
-            Arrays.fill(lightData, 1.0f);
+            Arrays.fill(lightData, 0.0f);
             FloatBuffer lightBuf = MemoryUtil.memAllocFloat(vertexCount);
             lightBuf.put(lightData).flip();
             GL30.glBufferData(GL30.GL_ARRAY_BUFFER, lightBuf, GL30.GL_DYNAMIC_DRAW);
@@ -994,11 +997,11 @@ public class Renderer {
             MemoryUtil.memFree(buf);
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
             
-            // Create lighting VBO with default values
+            // Create lighting VBO with default values (0.0 = use fallback uniform lighting until real data arrives)
             int lightVbo = GL30.glGenBuffers();
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, lightVbo);
             float[] lightData = new float[vertexCount];
-            Arrays.fill(lightData, 1.0f);
+            Arrays.fill(lightData, 0.0f);
             FloatBuffer lightBuf = MemoryUtil.memAllocFloat(vertexCount);
             lightBuf.put(lightData).flip();
             GL30.glBufferData(GL30.GL_ARRAY_BUFFER, lightBuf, GL30.GL_DYNAMIC_DRAW);
