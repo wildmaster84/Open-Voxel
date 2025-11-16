@@ -43,11 +43,12 @@ public class Renderer {
     private final ConcurrentHashMap<Integer, int[][]> radiusOffsetCache = new ConcurrentHashMap<>();
 
     private final ExecutorService mesherPool = Executors.newFixedThreadPool(Math.max(1, (Runtime.getRuntime().availableProcessors() / 2) / 2));
+    private final ExecutorService lightingPool = Executors.newFixedThreadPool(Math.max(1, (Runtime.getRuntime().availableProcessors() / 2) / 2));
 
     private static final int MAX_UPDATES_PER_FRAME = 4;
     private static final int MAX_BUILDS_PER_FRAME = 2;
  // how often to refresh lighting (in game ticks)
-    private static final int LIGHT_UPDATE_INTERVAL_TICKS = 20;
+    private static final int LIGHT_UPDATE_INTERVAL_TICKS = 3;
     
     private int lightTickCounter = 0;
 
@@ -280,6 +281,7 @@ public class Renderer {
         if (lightTickCounter >= LIGHT_UPDATE_INTERVAL_TICKS) {
             lightTickCounter = 0;
             updateLightingInView();
+            
         }
     }
 
@@ -400,7 +402,7 @@ public class Renderer {
             int dz = offsets[idx][1];
             int cx = cameraChunkX + dx;
             int cz = cameraChunkZ + dz;
-            invalidateChunk(cx, cz);
+            invalidateChunkLight(cx, cz);
             updated++;
         }
 
@@ -415,6 +417,18 @@ public class Renderer {
         Chunk chunk = world.getChunkIfLoaded(cx, cz);
         if (chunk == null) return;
         mesherPool.submit(() -> {
+            PendingMesh built = buildChunkMesh(cx, cz, chunk);
+            pendingUpdates.add(built);
+            meshStates.put(built.key, MeshState.READY);
+        });
+    }
+    
+    public void invalidateChunkLight(int cx, int cz) {
+        long key = pack(cx, cz);
+        meshStates.put(key, MeshState.BUILDING);        
+        Chunk chunk = world.getChunkIfLoaded(cx, cz);
+        if (chunk == null) return;
+        lightingPool.submit(() -> {
             PendingMesh built = buildChunkMesh(cx, cz, chunk);
             pendingUpdates.add(built);
             meshStates.put(built.key, MeshState.READY);
