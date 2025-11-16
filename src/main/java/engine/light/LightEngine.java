@@ -157,4 +157,12 @@ public final class LightEngine {
         // Scale with time-of-day, but only as a multiplier on already computed light:
         return base * (0.2f + 0.8f * dayFactor01); // never fully zero unless level == 0
     }
+
+    /**
+     * Get the raw skylight array for a chunk, or null if not computed.
+     * Used by lighting-only update path to sample per-vertex light values.
+     */
+    public byte[] getSkylightArray(int cx, int cz) {
+        return skylight.get(packChunk(cx, cz));
+    }
 }

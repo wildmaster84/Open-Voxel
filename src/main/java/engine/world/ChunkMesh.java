@@ -16,10 +16,12 @@ public class ChunkMesh {
     private static final class Batch {
         final int vboId;
         final int count;
+        int lightVboId; // Separate VBO for per-vertex lighting
 
         Batch(int vboId, int count) {
             this.vboId = vboId;
             this.count = count;
+            this.lightVboId = 0;
         }
     }
 
@@ -54,8 +56,38 @@ public class ChunkMesh {
         opaqueBatches.put(texture, new Batch(vboId, vertexCount));
     }
 
+    public void addOpaque(Texture texture, int vboId, int vertexCount, int lightVboId) {
+        Batch batch = new Batch(vboId, vertexCount);
+        batch.lightVboId = lightVboId;
+        opaqueBatches.put(texture, batch);
+    }
+
     public void addTranslucent(Texture texture, int vboId, int vertexCount) {
         transBatches.put(texture, new Batch(vboId, vertexCount));
+    }
+
+    public void addTranslucent(Texture texture, int vboId, int vertexCount, int lightVboId) {
+        Batch batch = new Batch(vboId, vertexCount);
+        batch.lightVboId = lightVboId;
+        transBatches.put(texture, batch);
+    }
+
+    /**
+     * Update lighting VBO for a specific texture batch.
+     * @param texture The texture whose batch to update
+     * @param lightData Per-vertex lighting values (one float per vertex)
+     * @param isOpaque Whether this is an opaque or translucent batch
+     */
+    public void updateLighting(Texture texture, float[] lightData, boolean isOpaque) {
+        Map<Texture, Batch> batches = isOpaque ? opaqueBatches : transBatches;
+        Batch batch = batches.get(texture);
+        if (batch == null || batch.lightVboId == 0) return;
+
+        GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, batch.lightVboId);
+        java.nio.FloatBuffer buf = org.lwjgl.BufferUtils.createFloatBuffer(lightData.length);
+        buf.put(lightData).flip();
+        GL30.glBufferSubData(GL30.GL_ARRAY_BUFFER, 0, buf);
+        GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
     }
 
     private void bindForDraw(Texture tex, int offLoc, int scaleLoc) {
@@ -80,9 +112,11 @@ public class ChunkMesh {
         GL30.glEnableVertexAttribArray(0);
         GL30.glEnableVertexAttribArray(1);
         GL30.glEnableVertexAttribArray(2);
+        GL30.glEnableVertexAttribArray(3); // lighting attribute
     }
 
     private void disableAttribs() {
+        GL30.glDisableVertexAttribArray(3);
         GL30.glDisableVertexAttribArray(2);
         GL30.glDisableVertexAttribArray(1);
         GL30.glDisableVertexAttribArray(0);
@@ -108,6 +142,13 @@ public class ChunkMesh {
             GL30.glVertexAttribPointer(0, 3, GL30.GL_FLOAT, false, STRIDE, 0L);
             GL30.glVertexAttribPointer(1, 2, GL30.GL_FLOAT, false, STRIDE, 3L * Float.BYTES);
             GL30.glVertexAttribPointer(2, 1, GL30.GL_FLOAT, false, STRIDE, 5L * Float.BYTES);
+
+            // Bind lighting VBO if available
+            if (b.lightVboId != 0) {
+                GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, b.lightVboId);
+                GL30.glVertexAttribPointer(3, 1, GL30.GL_FLOAT, false, Float.BYTES, 0L);
+            }
+
             GL30.glDrawArrays(GL30.GL_TRIANGLES, 0, b.count);
         }
 
@@ -139,6 +180,13 @@ public class ChunkMesh {
             GL30.glVertexAttribPointer(0, 3, GL30.GL_FLOAT, false, STRIDE, 0L);
             GL30.glVertexAttribPointer(1, 2, GL30.GL_FLOAT, false, STRIDE, 3L * Float.BYTES);
             GL30.glVertexAttribPointer(2, 1, GL30.GL_FLOAT, false, STRIDE, 5L * Float.BYTES);
+
+            // Bind lighting VBO if available
+            if (b.lightVboId != 0) {
+                GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, b.lightVboId);
+                GL30.glVertexAttribPointer(3, 1, GL30.GL_FLOAT, false, Float.BYTES, 0L);
+            }
+
             GL30.glDrawArrays(GL30.GL_TRIANGLES, 0, b.count);
         }
 
@@ -152,9 +200,15 @@ public class ChunkMesh {
     public void delete() {
         for (Batch b : opaqueBatches.values()) {
             GL30.glDeleteBuffers(b.vboId);
+            if (b.lightVboId != 0) {
+                GL30.glDeleteBuffers(b.lightVboId);
+            }
         }
         for (Batch b : transBatches.values()) {
             GL30.glDeleteBuffers(b.vboId);
+            if (b.lightVboId != 0) {
+                GL30.glDeleteBuffers(b.lightVboId);
+            }
         }
         opaqueBatches.clear();
         transBatches.clear();

@@ -39,6 +39,7 @@ public class Renderer {
     // Mesh management
     private final Map<Long, ChunkMesh> meshCache = new HashMap<>();
     private final ConcurrentLinkedQueue<PendingMesh> pendingUpdates = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<PendingLightingUpdate> pendingLightingUpdates = new ConcurrentLinkedQueue<>();
     private final ConcurrentHashMap<Long, MeshState> meshStates = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Integer, int[][]> radiusOffsetCache = new ConcurrentHashMap<>();
 
@@ -73,6 +74,17 @@ public class Renderer {
             this.key = key;
             this.opaque = opaque;
             this.translucent = translucent;
+        }
+    }
+
+    private final class PendingLightingUpdate {
+        final long key;
+        final Map<Texture, float[]> opaqueLighting;
+        final Map<Texture, float[]> translucentLighting;
+        PendingLightingUpdate(long key, Map<Texture, float[]> opaqueLighting, Map<Texture, float[]> translucentLighting) {
+            this.key = key;
+            this.opaqueLighting = opaqueLighting;
+            this.translucentLighting = translucentLighting;
         }
     }
 
@@ -121,8 +133,10 @@ public class Renderer {
             "layout(location = 0) in vec3 position;\n" +
             "layout(location = 1) in vec2 texCoord;\n" +
             "layout(location = 2) in float ao;\n" +
+            "layout(location = 3) in float lighting;\n" +
             "out vec2 vTexCoord;\n" +
             "out float vAO;\n" +
+            "out float vLighting;\n" +
             "uniform mat4 projection;\n" +
             "uniform mat4 view;\n" +
             "uniform mat4 model;\n" +
@@ -131,11 +145,13 @@ public class Renderer {
             "  gl_Position = projection * view * model * worldPos;\n" +
             "  vTexCoord = texCoord;\n" +
             "  vAO = ao;\n" +
+            "  vLighting = lighting;\n" +
             "}";
         String fragmentSrc =
         	      "#version 330 core\n"
         	    + "in vec2 vTexCoord;\n"
         	    + "in float vAO;\n"
+        	    + "in float vLighting;\n"
         	    + "in vec4 vLightSpacePos; // unused now, but we keep the varying\n"
         	    + "\n"
         	    + "out vec4 FragColor;\n"
@@ -154,13 +170,17 @@ public class Renderer {
         	    + "  // Clamp AO just in case\n"
         	    + "  float ao = clamp(vAO, 0.0, 1.0);\n"
         	    + "\n"
-        	    + "  // Day/night global brightness (0 at midnight, 1 at noon)\n"
-        	    + "  float day = clamp(uSunlight, 0.0, 1.0);\n"
-        	    + "\n"
-        	    + "  // Minecraft-ish: caves are lit only by skylight baked into vAO.\n"
-        	    + "  // Surfaces under open sky get vAO ~1, underground ~0.1–0.3.\n"
-        	    + "  float brightness = mix(0.02, 0.9, day) * ao;\n"
-        	    + "  // Ensure we never hit pure black unless AO says so\n"
+        	    + "  // Use per-vertex lighting if available (non-zero), otherwise fall back to old method\n"
+        	    + "  float brightness;\n"
+        	    + "  if (vLighting > 0.0) {\n"
+        	    + "    // Use per-vertex lighting directly (already includes day/night and skylight)\n"
+        	    + "    brightness = vLighting * ao;\n"
+        	    + "  } else {\n"
+        	    + "    // Fallback: old method for meshes without lighting VBO\n"
+        	    + "    float day = clamp(uSunlight, 0.0, 1.0);\n"
+        	    + "    brightness = mix(0.02, 0.9, day) * ao;\n"
+        	    + "  }\n"
+        	    + "  // Ensure we never hit pure black\n"
         	    + "  brightness = max(brightness, 0.12);\n"
         	    + "\n"
         	    + "  FragColor = vec4(tex.rgb * brightness, tex.a);\n"
@@ -310,6 +330,19 @@ public class Renderer {
 
         GL30.glBindVertexArray(vaoId);
 
+        // Process lighting-only updates first (fast)
+        int lightUpdates = 0;
+        while (lightUpdates < MAX_UPDATES_PER_FRAME) {
+            PendingLightingUpdate plu = pendingLightingUpdates.poll();
+            if (plu == null) break;
+            ChunkMesh mesh = meshCache.get(plu.key);
+            if (mesh != null) {
+                applyLightingUpdate(mesh, plu);
+            }
+            lightUpdates++;
+        }
+
+        // Process full mesh updates (slower)
         int updates = 0;
         while (updates < MAX_UPDATES_PER_FRAME) {
             
@@ -425,13 +458,18 @@ public class Renderer {
     
     public void invalidateChunkLight(int cx, int cz) {
         long key = pack(cx, cz);
-        meshStates.put(key, MeshState.BUILDING);        
         Chunk chunk = world.getChunkIfLoaded(cx, cz);
         if (chunk == null) return;
+        
+        // Only update lighting if mesh already exists
+        ChunkMesh existingMesh = meshCache.get(key);
+        if (existingMesh == null) return;
+        
         lightingPool.submit(() -> {
-            PendingMesh built = buildChunkMesh(cx, cz, chunk);
-            pendingUpdates.add(built);
-            meshStates.put(built.key, MeshState.READY);
+            PendingLightingUpdate lightUpdate = buildLightingUpdate(cx, cz, chunk);
+            if (lightUpdate != null) {
+                pendingLightingUpdates.add(lightUpdate);
+            }
         });
     }
 
@@ -557,6 +595,109 @@ public class Renderer {
         for (Map.Entry<Texture, FaceBatch> e : trans.entrySet()) perTrans.put(e.getKey(), e.getValue().toArray());
 
         return new PendingMesh(pack(cx, cz), perOpaque, perTrans);
+    }
+
+    private PendingLightingUpdate buildLightingUpdate(int cx, int cz, Chunk chunk) {
+        // Rebuild skylight for this chunk
+        VoxelEngine.getLightEngine().rebuildSkylightForChunk(world, cx, cz, chunk);
+        
+        // Get the skylight array
+        byte[] skylightData = VoxelEngine.getLightEngine().getSkylightArray(cx, cz);
+        if (skylightData == null) return null;
+
+        // We need to compute lighting values matching the existing mesh structure
+        // For now, compute a simple per-vertex light value based on block position
+        // This is a simplified version; ideally we'd match the exact vertex structure
+        Map<Texture, float[]> opaqueLighting = new HashMap<>();
+        Map<Texture, float[]> translucentLighting = new HashMap<>();
+        
+        final float baseX = cx * Chunk.SIZE;
+        final float baseZ = cz * Chunk.SIZE;
+        float dayFactor = dayAmount(timeOfDay01);
+
+        // Build lighting arrays matching the mesh structure
+        // For simplicity, we'll create lighting data for all possible faces
+        Map<Texture, LightBatch> opaqueLight = new HashMap<>();
+        Map<Texture, LightBatch> transLight = new HashMap<>();
+
+        for (int x = 0; x < Chunk.SIZE; x++) {
+            for (int y = 0; y < Chunk.HEIGHT; y++) {
+                for (int z = 0; z < Chunk.SIZE; z++) {
+                    final int state = chunk.getState(x, y, z);
+                    if (isAirState(state)) continue;
+
+                    final int tid = BlockState.typeId(state);
+                    BlockType type = BlockType.fromId(tid);
+                    if (type == null || type == BlockType.AIR) continue;
+
+                    float wx = baseX + x, wy = y, wz = baseZ + z;
+
+                    for (int face = 0; face < 6; face++) {
+                        if (!shouldRenderFaceByState(world, cx, cz, x, y, z, face)) continue;
+                        
+                        int[] nrm = FaceRenderer.FaceDirection.get(face);
+                        int gx = (int) wx + nrm[0];
+                        int gy = (int) wy + nrm[1];
+                        int gz = (int) wz + nrm[2];
+                        
+                        float lightValue = VoxelEngine.getLightEngine().sampleSkyLight01(gx, gy, gz, dayFactor);
+                        
+                        Texture tex = type.getTextureForFace(face);
+                        if (tex == null) continue;
+                        
+                        boolean isTranslucent = (type == BlockType.WATER || type == BlockType.GLASS);
+                        Map<Texture, LightBatch> targetBatch = isTranslucent ? transLight : opaqueLight;
+                        
+                        LightBatch lb = targetBatch.computeIfAbsent(tex, k -> new LightBatch(256 * 6));
+                        // 6 vertices per face
+                        for (int v = 0; v < 6; v++) {
+                            lb.addLight(lightValue);
+                        }
+                    }
+                }
+            }
+        }
+
+        for (Map.Entry<Texture, LightBatch> e : opaqueLight.entrySet()) {
+            opaqueLighting.put(e.getKey(), e.getValue().toArray());
+        }
+        for (Map.Entry<Texture, LightBatch> e : transLight.entrySet()) {
+            translucentLighting.put(e.getKey(), e.getValue().toArray());
+        }
+
+        return new PendingLightingUpdate(pack(cx, cz), opaqueLighting, translucentLighting);
+    }
+
+    private void applyLightingUpdate(ChunkMesh mesh, PendingLightingUpdate plu) {
+        // Update opaque batches
+        for (Map.Entry<Texture, float[]> e : plu.opaqueLighting.entrySet()) {
+            mesh.updateLighting(e.getKey(), e.getValue(), true);
+        }
+        // Update translucent batches
+        for (Map.Entry<Texture, float[]> e : plu.translucentLighting.entrySet()) {
+            mesh.updateLighting(e.getKey(), e.getValue(), false);
+        }
+    }
+
+    private static final class LightBatch {
+        private float[] data;
+        private int size;
+        LightBatch(int initialFloats) {
+            data = new float[Math.max(initialFloats, 6)];
+            size = 0;
+        }
+        void ensure(int moreFloats) {
+            int need = size + moreFloats;
+            if (need > data.length) {
+                int newCap = Math.max(need, data.length + (data.length >> 1));
+                data = java.util.Arrays.copyOf(data, newCap);
+            }
+        }
+        void addLight(float value) {
+            ensure(1);
+            data[size++] = value;
+        }
+        float[] toArray() { return Arrays.copyOf(data, size); }
     }
 
     private void addStairFaces(Map<Texture, FaceBatch> opaque, BlockType type, int state, float wx, float wy, float wz) {
@@ -686,6 +827,9 @@ public class Renderer {
             Texture tex = e.getKey();
             float[] verts = e.getValue();
             if (verts.length == 0) continue;
+            int vertexCount = verts.length / 6;
+            
+            // Create geometry VBO
             int vbo = GL30.glGenBuffers();
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vbo);
             FloatBuffer buf = MemoryUtil.memAllocFloat(verts.length);
@@ -693,13 +837,28 @@ public class Renderer {
             GL30.glBufferData(GL30.GL_ARRAY_BUFFER, buf, GL30.GL_STATIC_DRAW);
             MemoryUtil.memFree(buf);
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
-            mesh.addOpaque(tex, vbo, verts.length / 6);
+            
+            // Create lighting VBO with default values (1.0 = full bright for backward compatibility)
+            int lightVbo = GL30.glGenBuffers();
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, lightVbo);
+            float[] lightData = new float[vertexCount];
+            Arrays.fill(lightData, 1.0f);
+            FloatBuffer lightBuf = MemoryUtil.memAllocFloat(vertexCount);
+            lightBuf.put(lightData).flip();
+            GL30.glBufferData(GL30.GL_ARRAY_BUFFER, lightBuf, GL30.GL_DYNAMIC_DRAW);
+            MemoryUtil.memFree(lightBuf);
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
+            
+            mesh.addOpaque(tex, vbo, vertexCount, lightVbo);
         }
 
         for (Map.Entry<Texture, float[]> e : pm.translucent.entrySet()) {
             Texture tex = e.getKey();
             float[] verts = e.getValue();
             if (verts.length == 0) continue;
+            int vertexCount = verts.length / 6;
+            
+            // Create geometry VBO
             int vbo = GL30.glGenBuffers();
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, vbo);
             FloatBuffer buf = MemoryUtil.memAllocFloat(verts.length);
@@ -707,7 +866,19 @@ public class Renderer {
             GL30.glBufferData(GL30.GL_ARRAY_BUFFER, buf, GL30.GL_STATIC_DRAW);
             MemoryUtil.memFree(buf);
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
-            mesh.addTranslucent(tex, vbo, verts.length / 6);
+            
+            // Create lighting VBO with default values
+            int lightVbo = GL30.glGenBuffers();
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, lightVbo);
+            float[] lightData = new float[vertexCount];
+            Arrays.fill(lightData, 1.0f);
+            FloatBuffer lightBuf = MemoryUtil.memAllocFloat(vertexCount);
+            lightBuf.put(lightData).flip();
+            GL30.glBufferData(GL30.GL_ARRAY_BUFFER, lightBuf, GL30.GL_DYNAMIC_DRAW);
+            MemoryUtil.memFree(lightBuf);
+            GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
+            
+            mesh.addTranslucent(tex, vbo, vertexCount, lightVbo);
         }
 
         return mesh;
