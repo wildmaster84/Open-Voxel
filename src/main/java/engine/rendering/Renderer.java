@@ -605,21 +605,15 @@ public class Renderer {
         byte[] skylightData = VoxelEngine.getLightEngine().getSkylightArray(cx, cz);
         if (skylightData == null) return null;
 
-        // We need to compute lighting values matching the existing mesh structure
-        // For now, compute a simple per-vertex light value based on block position
-        // This is a simplified version; ideally we'd match the exact vertex structure
-        Map<Texture, float[]> opaqueLighting = new HashMap<>();
-        Map<Texture, float[]> translucentLighting = new HashMap<>();
+        // Build lighting arrays matching EXACTLY the mesh structure from buildChunkMesh
+        Map<Texture, LightBatch> opaqueLight = new HashMap<>();
+        Map<Texture, LightBatch> transLight = new HashMap<>();
         
         final float baseX = cx * Chunk.SIZE;
         final float baseZ = cz * Chunk.SIZE;
         float dayFactor = dayAmount(timeOfDay01);
 
-        // Build lighting arrays matching the mesh structure
-        // For simplicity, we'll create lighting data for all possible faces
-        Map<Texture, LightBatch> opaqueLight = new HashMap<>();
-        Map<Texture, LightBatch> transLight = new HashMap<>();
-
+        // MUST follow the exact same logic as buildChunkMesh
         for (int x = 0; x < Chunk.SIZE; x++) {
             for (int y = 0; y < Chunk.HEIGHT; y++) {
                 for (int z = 0; z < Chunk.SIZE; z++) {
@@ -632,32 +626,46 @@ public class Renderer {
 
                     float wx = baseX + x, wy = y, wz = baseZ + z;
 
+                    // Handle stairs - they generate multiple quads
+                    if (tid == BlockType.STAIR.getId()) {
+                        addStairLighting(opaqueLight, type, state, wx, wy, wz, dayFactor);
+                        continue;
+                    }
+
                     for (int face = 0; face < 6; face++) {
+                        int nState = getNeighborStateOrAir(world, cx, cz, x, y, z, face);
+                        int nTid = BlockState.typeId(nState);
+
+                        if (tid == BlockType.WATER.getId()) {
+                            handleWaterFaceLighting(opaqueLight, transLight, cx, cz, x, y, z, face, nState, type, wx, wy, wz, dayFactor);
+                            continue;
+                        }
+
+                        if (tid == BlockType.GLASS.getId()) {
+                            handleGlassFaceLighting(transLight, world, cx, cz, x, y, z, face, nState, type, wx, wy, wz, dayFactor);
+                            continue;
+                        }
+
+                        if (nTid == BlockType.GLASS.getId()) {
+                            addFaceLighting(opaqueLight, type.getTextureForFace(face), wx, wy, wz, face, dayFactor);
+                            continue;
+                        }
+
                         if (!shouldRenderFaceByState(world, cx, cz, x, y, z, face)) continue;
-                        
-                        int[] nrm = FaceRenderer.FaceDirection.get(face);
-                        int gx = (int) wx + nrm[0];
-                        int gy = (int) wy + nrm[1];
-                        int gz = (int) wz + nrm[2];
-                        
-                        float lightValue = VoxelEngine.getLightEngine().sampleSkyLight01(gx, gy, gz, dayFactor);
-                        
-                        Texture tex = type.getTextureForFace(face);
-                        if (tex == null) continue;
-                        
-                        boolean isTranslucent = (type == BlockType.WATER || type == BlockType.GLASS);
-                        Map<Texture, LightBatch> targetBatch = isTranslucent ? transLight : opaqueLight;
-                        
-                        LightBatch lb = targetBatch.computeIfAbsent(tex, k -> new LightBatch(256 * 6));
-                        // 6 vertices per face
-                        for (int v = 0; v < 6; v++) {
-                            lb.addLight(lightValue);
+                        boolean isTranslucent = (type == BlockType.WATER);
+                        if (isTranslucent) {
+                            addFaceLighting(transLight, type.getTextureForFace(face), wx, wy, wz, face, dayFactor);
+                        } else {
+                            addFaceLighting(opaqueLight, type.getTextureForFace(face), wx, wy, wz, face, dayFactor);
                         }
                     }
                 }
             }
         }
 
+        Map<Texture, float[]> opaqueLighting = new HashMap<>();
+        Map<Texture, float[]> translucentLighting = new HashMap<>();
+        
         for (Map.Entry<Texture, LightBatch> e : opaqueLight.entrySet()) {
             opaqueLighting.put(e.getKey(), e.getValue().toArray());
         }
@@ -666,6 +674,114 @@ public class Renderer {
         }
 
         return new PendingLightingUpdate(pack(cx, cz), opaqueLighting, translucentLighting);
+    }
+
+    private void addStairLighting(Map<Texture, LightBatch> opaqueLight, BlockType type, int state, float wx, float wy, float wz, float dayFactor) {
+        int f = BlockState.stairsFacing(state);
+        boolean upside = BlockState.stairsUpside(state);
+        Texture tex = type.getTextureForFace(0);
+        if (tex == null) return;
+        
+        AbstractBlock.Facing facing =
+                (f == BlockState.FACING_EAST)  ? AbstractBlock.Facing.WEST  :
+                (f == BlockState.FACING_WEST)  ? AbstractBlock.Facing.EAST  :
+                (f == BlockState.FACING_SOUTH) ? AbstractBlock.Facing.NORTH :
+                                                 AbstractBlock.Facing.SOUTH;
+        var quads = FaceRenderer.stairQuads(facing, upside);
+        
+        LightBatch lb = opaqueLight.computeIfAbsent(tex, k -> new LightBatch(256 * 6));
+        for (float[] q : quads) {
+            // Each quad generates 6 vertices (2 triangles)
+            float lightValue = VoxelEngine.getLightEngine().sampleSkyLight01((int)wx, (int)wy, (int)wz, dayFactor);
+            for (int v = 0; v < 6; v++) {
+                lb.addLight(lightValue);
+            }
+        }
+    }
+
+    private void handleWaterFaceLighting(Map<Texture, LightBatch> opaqueLight, Map<Texture, LightBatch> transLight,
+                                         int cx, int cz, int x, int y, int z, int face, int nState,
+                                         BlockType type, float wx, float wy, float wz, float dayFactor) {
+        int aboveState = getNeighborStateOrAir(world, cx, cz, x, y, z, 0);
+        boolean isTopWater = !isLiquidState(aboveState);
+
+        if (face == 0 && isTopWater) {
+            if (!isAirState(nState)) return;
+            Texture tex = type.getTextureForFace(0);
+            if (tex == null) return;
+            
+            int[] nrm = FaceRenderer.FaceDirection.get(face);
+            int gx = (int) wx + nrm[0];
+            int gy = (int) wy + nrm[1];
+            int gz = (int) wz + nrm[2];
+            float lightValue = VoxelEngine.getLightEngine().sampleSkyLight01(gx, gy, gz, dayFactor);
+            
+            LightBatch lb = transLight.computeIfAbsent(tex, k -> new LightBatch(256 * 6));
+            for (int v = 0; v < 6; v++) {
+                lb.addLight(lightValue);
+            }
+            return;
+        }
+
+        if (!isLiquidState(nState)) {
+            if (!isAirState(nState)) return;
+            Texture tex = type.getTextureForFace(0);
+            if (tex == null) return;
+            
+            int[] nrm = FaceRenderer.FaceDirection.get(face);
+            int gx = (int) wx + nrm[0];
+            int gy = (int) wy + nrm[1];
+            int gz = (int) wz + nrm[2];
+            float lightValue = VoxelEngine.getLightEngine().sampleSkyLight01(gx, gy, gz, dayFactor);
+            
+            LightBatch lb = transLight.computeIfAbsent(tex, k -> new LightBatch(256 * 6));
+            for (int v = 0; v < 6; v++) {
+                lb.addLight(lightValue);
+            }
+            return;
+        }
+
+        if (!isAirState(nState)) return;
+    }
+
+    private void handleGlassFaceLighting(Map<Texture, LightBatch> transLight, World world,
+                                         int cx, int cz, int x, int y, int z, int face, int nState,
+                                         BlockType type, float wx, float wy, float wz, float dayFactor) {
+        int nTid = BlockState.typeId(nState);
+        if (nTid == BlockType.GLASS.getId()) return;
+
+        if (!(isAirState(nState) || isLiquidState(nState) || !stateFullyOccludes(nState, face))) return;
+
+        Texture tex = type.getTextureForFace(face);
+        if (tex == null) return;
+        
+        int[] nrm = FaceDirection.get(face);
+        int gx = (int) wx + nrm[0];
+        int gy = (int) wy + nrm[1];
+        int gz = (int) wz + nrm[2];
+        float lightValue = VoxelEngine.getLightEngine().sampleSkyLight01(gx, gy, gz, dayFactor);
+        
+        LightBatch lb = transLight.computeIfAbsent(tex, k -> new LightBatch(256 * 6));
+        for (int v = 0; v < 6; v++) {
+            lb.addLight(lightValue);
+        }
+    }
+
+    private void addFaceLighting(Map<Texture, LightBatch> batch, Texture tex, float wx, float wy, float wz, int face, float dayFactor) {
+        if (tex == null) return;
+        
+        int[] nrm = FaceDirection.get(face);
+        int gx = (int) wx + nrm[0];
+        int gy = (int) wy + nrm[1];
+        int gz = (int) wz + nrm[2];
+        
+        float lightValue = VoxelEngine.getLightEngine().sampleSkyLight01(gx, gy, gz, dayFactor);
+        
+        LightBatch lb = batch.computeIfAbsent(tex, k -> new LightBatch(256 * 6));
+        // Each face generates 6 vertices
+        for (int v = 0; v < 6; v++) {
+            lb.addLight(lightValue);
+        }
     }
 
     private void applyLightingUpdate(ChunkMesh mesh, PendingLightingUpdate plu) {
