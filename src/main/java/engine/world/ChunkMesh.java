@@ -12,6 +12,7 @@ import engine.rendering.Texture;
 public class ChunkMesh {
     private static final int STRIDE = 6 * Float.BYTES; // POS+UV+AO
 
+    // Simple batch container: one VBO + vertex count per texture
     private static final class Batch {
         final int vboId;
         final int count;
@@ -25,10 +26,17 @@ public class ChunkMesh {
     private final Map<Texture, Batch> opaqueBatches = new HashMap<>();
     private final Map<Texture, Batch> transBatches  = new HashMap<>();
 
+    // Cached shader info (set by renderer)
     private int programId = -1;
     private int uFrameOffsetLoc = -1;
     private int uFrameScaleLoc  = -1;
 
+    /**
+     * Call this from your renderer when you bind the block shader:
+     *
+     *   shader.bind();
+     *   chunkMesh.setProgram(shader.getId());
+     */
     public void setProgram(int programId) {
         if (this.programId == programId) return;
         this.programId = programId;
@@ -82,7 +90,7 @@ public class ChunkMesh {
 
     public void drawOpaque() {
         if (opaqueBatches.isEmpty()) return;
-        if (programId == 0) return;
+        if (programId == 0) return; // no shader set
 
         enableAttribs();
 

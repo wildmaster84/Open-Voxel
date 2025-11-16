@@ -11,6 +11,7 @@ import engine.events.GameEventManager;
 import engine.events.player.ClickEvent;
 import engine.input.InputHandler;
 import engine.input.InputHandler.Hit;
+import engine.light.LightEngine;
 import engine.physics.PhysicsEngine;
 import engine.rendering.Camera;
 import org.joml.Vector3f;
@@ -30,6 +31,7 @@ public class VoxelEngine {
 	private Camera camera;
 	private InputHandler input;
 	private PhysicsEngine physics;
+	private static LightEngine lightEngine;
 	private boolean running = true;
 	int vsync = 0;
 	int renderDistance = 4;
@@ -71,6 +73,7 @@ public class VoxelEngine {
 		world = new World(2025L);
 		camera = new Camera(WIDTH, HEIGHT, 95, this.renderDistance, world);
 		physics = new PhysicsEngine(world, camera);
+		lightEngine = new LightEngine();
 		input = new InputHandler(window, camera, physics, this);
 		renderer = new Renderer(world, camera);
 		UIManager.get().setWindow(window);
@@ -88,6 +91,7 @@ public class VoxelEngine {
 	    double lastTime = GLFW.glfwGetTime();
 	    float gameAccum  = 0f;
 	    float worldAccum = 0f;
+	    float renderAccum = 0f;
 
 	    int frames = 0;
 	    double lastFpsTime = lastTime;
@@ -104,6 +108,7 @@ public class VoxelEngine {
 
 	        gameAccum  += frameTime;
 	        worldAccum += frameTime;
+	        renderAccum += frameTime;
 
 	        frames++;
 	        if (now - lastFpsTime >= 1.0) {
@@ -255,5 +260,9 @@ public class VoxelEngine {
 	public static VoxelEngine getEngine() {
 		return engine;
 	}
+	public static LightEngine getLightEngine() {
+		return lightEngine;
+	}
+
 
 }

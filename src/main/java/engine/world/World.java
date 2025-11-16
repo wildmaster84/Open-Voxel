@@ -7,6 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import engine.VoxelEngine;
 import engine.rendering.Camera;
 import engine.world.block.BlockType;
 import engine.world.saving.SaveManager;

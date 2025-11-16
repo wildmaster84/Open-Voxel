@@ -8,6 +8,9 @@ public class Chunk {
 
     private final int chunkX, chunkZ;
     private static final int SECTION_COUNT = (HEIGHT + SIZE - 1) / SIZE;
+    
+    private final byte[][][] skyLight = new byte[SIZE][HEIGHT][SIZE];
+    private final byte[][][] blockLight = new byte[SIZE][HEIGHT][SIZE];
 
     private final BlockSectionStorage[] sections = new BlockSectionStorage[SECTION_COUNT];
     
@@ -89,6 +92,19 @@ public class Chunk {
     public void setState(int x, int y, int z, int state) {
         sectionFor(y).setId(x, y & 15, z, state);
         dirty = true;
+    }
+    
+    public byte getSkyLight(int x, int y, int z) {
+        return skyLight[x][y][z];
+    }
+    public void setSkyLight(int x, int y, int z, int level) {
+        skyLight[x][y][z] = (byte)Math.max(0, Math.min(15, level));
+    }
+    public byte getBlockLight(int x, int y, int z) {
+        return blockLight[x][y][z];
+    }
+    public void setBlockLight(int x, int y, int z, int level) {
+        blockLight[x][y][z] = (byte)Math.max(0, Math.min(15, level));
     }
 
     public int getChunkX() { return chunkX; }

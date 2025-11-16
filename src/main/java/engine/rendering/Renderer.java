@@ -1,6 +1,8 @@
 package engine.rendering;
 
+import engine.VoxelEngine;
 import engine.input.InputHandler;
+import engine.light.LightEngine;
 import engine.rendering.FaceRenderer.FaceDirection;
 import engine.world.Chunk;
 import engine.world.ChunkMesh;
@@ -44,9 +46,16 @@ public class Renderer {
 
     private static final int MAX_UPDATES_PER_FRAME = 4;
     private static final int MAX_BUILDS_PER_FRAME = 2;
+ // how often to refresh lighting (in game ticks)
+    private static final int LIGHT_UPDATE_INTERVAL_TICKS = 20;
+    
+    private int lightTickCounter = 0;
+
+    // for incremental lighting updates so we don't rebuild all chunks at once
+    private int lightUpdateOffsetIndex = 0;
 
     private final OutlineRenderer outline = new OutlineRenderer();
-
+    
     private float timeOfDay01 = 0f;
     private static final float DAY_LENGTH_SEC = 4f * 60f;
 
@@ -123,21 +132,39 @@ public class Renderer {
             "  vAO = ao;\n" +
             "}";
         String fragmentSrc =
-            "#version 330 core\n" +
-            "in vec2 vTexCoord;\n" +
-            "in float vAO;\n" +
-            "out vec4 FragColor;\n" +
-            "uniform sampler2D blockTexture;\n" +
-            "uniform float uFrameOffset;\n" +
-            "uniform float uFrameScale;\n" +
-            "uniform float uSunlight;\n" +
-            "void main() {\n" +
-            "  vec2 coord = vec2(vTexCoord.x, vTexCoord.y * uFrameScale + uFrameOffset);\n" +
-            "  vec4 tex = texture(blockTexture, coord);\n" +
-            "  float base = mix(0.12, 0.95, clamp(uSunlight, 0.0, 1.0));\n" +
-            "  float lit = base * vAO;\n" +
-            "  FragColor = vec4(tex.rgb * lit, tex.a);\n" +
-            "}";
+        	      "#version 330 core\n"
+        	    + "in vec2 vTexCoord;\n"
+        	    + "in float vAO;\n"
+        	    + "in vec4 vLightSpacePos; // unused now, but we keep the varying\n"
+        	    + "\n"
+        	    + "out vec4 FragColor;\n"
+        	    + "\n"
+        	    + "uniform sampler2D blockTexture;\n"
+        	    + "uniform float uFrameOffset;\n"
+        	    + "uniform float uFrameScale;\n"
+        	    + "uniform float uSunlight;\n"
+        	    + "\n"
+        	    + "void main() {\n"
+        	    + "  // Sample from atlas (animated)\n"
+        	    + "  vec2 coord = vec2(vTexCoord.x, vTexCoord.y * uFrameScale + uFrameOffset);\n"
+        	    + "  vec4 tex = texture(blockTexture, coord);\n"
+        	    + "  if (tex.a <= 0.1) discard;\n"
+        	    + "\n"
+        	    + "  // Clamp AO just in case\n"
+        	    + "  float ao = clamp(vAO, 0.0, 1.0);\n"
+        	    + "\n"
+        	    + "  // Day/night global brightness (0 at midnight, 1 at noon)\n"
+        	    + "  float day = clamp(uSunlight, 0.0, 1.0);\n"
+        	    + "\n"
+        	    + "  // Minecraft-ish: caves are lit only by skylight baked into vAO.\n"
+        	    + "  // Surfaces under open sky get vAO ~1, underground ~0.1–0.3.\n"
+        	    + "  float brightness = mix(0.02, 0.9, day) * ao;\n"
+        	    + "  // Ensure we never hit pure black unless AO says so\n"
+        	    + "  brightness = max(brightness, 0.12);\n"
+        	    + "\n"
+        	    + "  FragColor = vec4(tex.rgb * brightness, tex.a);\n"
+        	    + "}\n";
+
 
         shader = new ShaderProgram(vertexSrc, fragmentSrc);
     }
@@ -248,6 +275,12 @@ public class Renderer {
                 if (tex instanceof AnimatedTexture) ((AnimatedTexture) tex).update(dt);
             }
         }
+        
+        lightTickCounter++;
+        if (lightTickCounter >= LIGHT_UPDATE_INTERVAL_TICKS) {
+            lightTickCounter = 0;
+            updateLightingInView();
+        }
     }
 
     public void render(InputHandler input) {
@@ -346,10 +379,39 @@ public class Renderer {
             if (h != null) drawHoverOutline(h);
         }
     }
+    
+    private void updateLightingInView() {
+        int cameraChunkX = Math.floorDiv((int) camera.getPosition().x, Chunk.SIZE);
+        int cameraChunkZ = Math.floorDiv((int) camera.getPosition().z, Chunk.SIZE);
+        int renderRadius = camera.getRenderDistance();
+
+        int[][] offsets = getOffsetsSortedByDistance(renderRadius);
+
+        // limit how many chunks we touch per lighting pass
+        final int MAX_LIGHT_UPDATES_PER_PASS = 4;
+        int updated = 0;
+
+        // continue from where we left off last time
+        int count = offsets.length;
+        for (int i = 0; i < count && updated < MAX_LIGHT_UPDATES_PER_PASS; i++) {
+            int idx = (lightUpdateOffsetIndex + i) % count;
+
+            int dx = offsets[idx][0];
+            int dz = offsets[idx][1];
+            int cx = cameraChunkX + dx;
+            int cz = cameraChunkZ + dz;
+            invalidateChunk(cx, cz);
+            updated++;
+        }
+
+        // advance the offset for next call so we cycle through the ring
+        lightUpdateOffsetIndex = (lightUpdateOffsetIndex + updated) % Math.max(1, count);
+    }
+
 
     public void invalidateChunk(int cx, int cz) {
         long key = pack(cx, cz);
-        meshStates.put(key, MeshState.BUILDING);
+        meshStates.put(key, MeshState.BUILDING);        
         Chunk chunk = world.getChunkIfLoaded(cx, cz);
         if (chunk == null) return;
         mesherPool.submit(() -> {
@@ -420,6 +482,7 @@ public class Renderer {
     }
 
     private PendingMesh buildChunkMesh(int cx, int cz, Chunk chunk) {
+    	VoxelEngine.getLightEngine().rebuildSkylightForChunk(world, cx, cz, chunk);
         Map<Texture, FaceBatch> opaque = new HashMap<>(64);
         Map<Texture, FaceBatch> trans  = new HashMap<>(16);
 
@@ -582,6 +645,11 @@ public class Renderer {
         ao4[2] = FaceRenderer.cornerAO(world, gx, gy, gz, face, 2);
         ao4[3] = FaceRenderer.cornerAO(world, gx, gy, gz, face, 3);
 
+        float sky = VoxelEngine.getLightEngine().sampleSkyLight01(gx, gy, gz, dayAmount(timeOfDay01));
+        for (int i = 0; i < 4; i++) {
+            ao4[i] *= sky;
+        }
+        
         fb.addFaceWithAO(wx, wy, wz, verts, ao4);
     }
 
