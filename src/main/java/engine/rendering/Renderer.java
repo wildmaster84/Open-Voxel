@@ -68,10 +68,13 @@ public class Renderer {
 
     private final class PendingMesh {
         final long key;
+        final int cx, cz;
         final Map<Texture, float[]> opaque;
         final Map<Texture, float[]> translucent;
-        PendingMesh(long key, Map<Texture, float[]> opaque, Map<Texture, float[]> translucent) {
+        PendingMesh(long key, int cx, int cz, Map<Texture, float[]> opaque, Map<Texture, float[]> translucent) {
             this.key = key;
+            this.cx = cx;
+            this.cz = cz;
             this.opaque = opaque;
             this.translucent = translucent;
         }
@@ -353,6 +356,16 @@ public class Renderer {
             meshCache.put(pm.key, mesh);
             meshStates.put(pm.key, MeshState.GPU_LOADED);
             if (oldMesh != null) oldMesh.delete();
+            
+            // Immediately compute and apply lighting for the new mesh
+            Chunk chunk = world.getChunkIfLoaded(pm.cx, pm.cz);
+            if (chunk != null) {
+                PendingLightingUpdate lightUpdate = buildLightingUpdate(pm.cx, pm.cz, chunk);
+                if (lightUpdate != null) {
+                    applyLightingUpdate(mesh, lightUpdate);
+                }
+            }
+            
             updates++;
         }
 
@@ -594,7 +607,7 @@ public class Renderer {
         Map<Texture, float[]> perTrans = new HashMap<>(trans.size());
         for (Map.Entry<Texture, FaceBatch> e : trans.entrySet()) perTrans.put(e.getKey(), e.getValue().toArray());
 
-        return new PendingMesh(pack(cx, cz), perOpaque, perTrans);
+        return new PendingMesh(pack(cx, cz), cx, cz, perOpaque, perTrans);
     }
 
     private PendingLightingUpdate buildLightingUpdate(int cx, int cz, Chunk chunk) {
@@ -916,10 +929,8 @@ public class Renderer {
         ao4[2] = FaceRenderer.cornerAO(world, gx, gy, gz, face, 2);
         ao4[3] = FaceRenderer.cornerAO(world, gx, gy, gz, face, 3);
 
-        float sky = VoxelEngine.getLightEngine().sampleSkyLight01(gx, gy, gz, dayAmount(timeOfDay01));
-        for (int i = 0; i < 4; i++) {
-            ao4[i] *= sky;
-        }
+        // NOTE: Don't bake lighting into AO anymore - it's handled by separate lighting VBO
+        // This allows lighting-only updates without rebuilding geometry
         
         fb.addFaceWithAO(wx, wy, wz, verts, ao4);
     }
