@@ -173,13 +173,14 @@ public class Renderer {
         	    + "  // Clamp AO just in case\n"
         	    + "  float ao = clamp(vAO, 0.0, 1.0);\n"
         	    + "\n"
-        	    + "  // Use per-vertex lighting if available (non-zero), otherwise fall back to old method\n"
+        	    + "  // Use per-vertex lighting if available (>= 0), otherwise fall back to uniform lighting\n"
+        	    + "  // Note: vLighting is initialized to -1.0 when not yet computed, 0.0+ when computed\n"
         	    + "  float brightness;\n"
-        	    + "  if (vLighting > 0.0) {\n"
+        	    + "  if (vLighting >= 0.0) {\n"
         	    + "    // Use per-vertex lighting directly (already includes day/night and skylight)\n"
         	    + "    brightness = vLighting * ao;\n"
         	    + "  } else {\n"
-        	    + "    // Fallback: old method for meshes without lighting VBO\n"
+        	    + "    // Fallback: uniform lighting for meshes where per-vertex data hasn't arrived yet\n"
         	    + "    float day = clamp(uSunlight, 0.0, 1.0);\n"
         	    + "    brightness = mix(0.02, 0.9, day) * ao;\n"
         	    + "  }\n"
@@ -968,11 +969,11 @@ public class Renderer {
             MemoryUtil.memFree(buf);
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
             
-            // Create lighting VBO with default values (0.0 = use fallback uniform lighting until real data arrives)
+            // Create lighting VBO with default values (-1.0 = use fallback uniform lighting until real data arrives)
             int lightVbo = GL30.glGenBuffers();
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, lightVbo);
             float[] lightData = new float[vertexCount];
-            Arrays.fill(lightData, 0.0f);
+            Arrays.fill(lightData, -1.0f);
             FloatBuffer lightBuf = MemoryUtil.memAllocFloat(vertexCount);
             lightBuf.put(lightData).flip();
             GL30.glBufferData(GL30.GL_ARRAY_BUFFER, lightBuf, GL30.GL_DYNAMIC_DRAW);
@@ -997,11 +998,11 @@ public class Renderer {
             MemoryUtil.memFree(buf);
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, 0);
             
-            // Create lighting VBO with default values (0.0 = use fallback uniform lighting until real data arrives)
+            // Create lighting VBO with default values (-1.0 = use fallback uniform lighting until real data arrives)
             int lightVbo = GL30.glGenBuffers();
             GL30.glBindBuffer(GL30.GL_ARRAY_BUFFER, lightVbo);
             float[] lightData = new float[vertexCount];
-            Arrays.fill(lightData, 0.0f);
+            Arrays.fill(lightData, -1.0f);
             FloatBuffer lightBuf = MemoryUtil.memAllocFloat(vertexCount);
             lightBuf.put(lightData).flip();
             GL30.glBufferData(GL30.GL_ARRAY_BUFFER, lightBuf, GL30.GL_DYNAMIC_DRAW);
