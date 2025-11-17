@@ -48,8 +48,8 @@ public class Renderer {
 
     private static final int MAX_UPDATES_PER_FRAME = 4;
     private static final int MAX_BUILDS_PER_FRAME = 2;
- // how often to refresh lighting (in game ticks)
-    private static final int LIGHT_UPDATE_INTERVAL_TICKS = 3;
+    // how often to refresh lighting (in game ticks) - reduced for faster updates
+    private static final int LIGHT_UPDATE_INTERVAL_TICKS = 1;
     
     private int lightTickCounter = 0;
 
@@ -440,7 +440,8 @@ public class Renderer {
         int[][] offsets = getOffsetsSortedByDistance(renderRadius);
 
         // limit how many chunks we touch per lighting pass
-        final int MAX_LIGHT_UPDATES_PER_PASS = 4;
+        // Since lighting computation is async on worker threads, we can handle more per frame
+        final int MAX_LIGHT_UPDATES_PER_PASS = 16;
         int updated = 0;
 
         // continue from where we left off last time
