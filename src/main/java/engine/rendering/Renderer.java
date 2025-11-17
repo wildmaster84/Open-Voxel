@@ -46,6 +46,8 @@ public class Renderer {
     private final ExecutorService mesherPool = Executors.newFixedThreadPool(Math.max(1, (Runtime.getRuntime().availableProcessors() / 2) / 2));
     private final ExecutorService lightingPool = Executors.newFixedThreadPool(Math.max(1, (Runtime.getRuntime().availableProcessors() / 2) / 2));
 
+    // Lighting updates are fast (glBufferSubData only), so we can process many per frame
+    private static final int MAX_LIGHTING_UPDATES_PER_FRAME = 32;
     private static final int MAX_UPDATES_PER_FRAME = 4;
     private static final int MAX_BUILDS_PER_FRAME = 2;
     // how often to refresh lighting (in game ticks) - reduced for faster updates
@@ -334,9 +336,9 @@ public class Renderer {
 
         GL30.glBindVertexArray(vaoId);
 
-        // Process lighting-only updates first (fast)
+        // Process lighting-only updates first (fast - just glBufferSubData calls)
         int lightUpdates = 0;
-        while (lightUpdates < MAX_UPDATES_PER_FRAME) {
+        while (lightUpdates < MAX_LIGHTING_UPDATES_PER_FRAME) {
             PendingLightingUpdate plu = pendingLightingUpdates.poll();
             if (plu == null) break;
             ChunkMesh mesh = meshCache.get(plu.key);
