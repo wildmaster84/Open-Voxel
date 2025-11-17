@@ -50,13 +50,11 @@ public class Renderer {
     private static final int MAX_LIGHTING_UPDATES_PER_FRAME = 32;
     private static final int MAX_UPDATES_PER_FRAME = 4;
     private static final int MAX_BUILDS_PER_FRAME = 2;
-    // how often to refresh lighting (in game ticks) - reduced for faster updates
-    private static final int LIGHT_UPDATE_INTERVAL_TICKS = 1;
+    // how often to refresh lighting (in game ticks)
+    // Updates all visible chunks each time, so we don't need to do it every frame
+    private static final int LIGHT_UPDATE_INTERVAL_TICKS = 5;
     
     private int lightTickCounter = 0;
-
-    // for incremental lighting updates so we don't rebuild all chunks at once
-    private int lightUpdateOffsetIndex = 0;
 
     private final OutlineRenderer outline = new OutlineRenderer();
     
@@ -441,26 +439,16 @@ public class Renderer {
 
         int[][] offsets = getOffsetsSortedByDistance(renderRadius);
 
-        // limit how many chunks we touch per lighting pass
-        // Since lighting computation is async on worker threads, we can handle more per frame
-        final int MAX_LIGHT_UPDATES_PER_PASS = 16;
-        int updated = 0;
-
-        // continue from where we left off last time
-        int count = offsets.length;
-        for (int i = 0; i < count && updated < MAX_LIGHT_UPDATES_PER_PASS; i++) {
-            int idx = (lightUpdateOffsetIndex + i) % count;
-
-            int dx = offsets[idx][0];
-            int dz = offsets[idx][1];
+        // Update ALL visible chunks for immediate lighting refresh
+        // Since lighting computation is async on worker threads and application is fast,
+        // we can handle updating all chunks without performance impact
+        for (int i = 0; i < offsets.length; i++) {
+            int dx = offsets[i][0];
+            int dz = offsets[i][1];
             int cx = cameraChunkX + dx;
             int cz = cameraChunkZ + dz;
             invalidateChunkLight(cx, cz);
-            updated++;
         }
-
-        // advance the offset for next call so we cycle through the ring
-        lightUpdateOffsetIndex = (lightUpdateOffsetIndex + updated) % Math.max(1, count);
     }
 
 
