@@ -71,12 +71,14 @@ public class Renderer {
         final int cx, cz;
         final Map<Texture, float[]> opaque;
         final Map<Texture, float[]> translucent;
-        PendingMesh(long key, int cx, int cz, Map<Texture, float[]> opaque, Map<Texture, float[]> translucent) {
+        final boolean computeLightingImmediately; // true for block changes to avoid flicker
+        PendingMesh(long key, int cx, int cz, Map<Texture, float[]> opaque, Map<Texture, float[]> translucent, boolean computeLightingImmediately) {
             this.key = key;
             this.cx = cx;
             this.cz = cz;
             this.opaque = opaque;
             this.translucent = translucent;
+            this.computeLightingImmediately = computeLightingImmediately;
         }
     }
 
@@ -358,9 +360,10 @@ public class Renderer {
             meshStates.put(pm.key, MeshState.GPU_LOADED);
             if (oldMesh != null) oldMesh.delete();
             
-            // Schedule async lighting computation for the new mesh (don't block render thread)
+            // Compute lighting for the new mesh
             final int cx = pm.cx, cz = pm.cz;
-            lightingPool.submit(() -> {
+            if (pm.computeLightingImmediately) {
+                // Block change - compute immediately to avoid flicker
                 Chunk chunk = world.getChunkIfLoaded(cx, cz);
                 if (chunk != null) {
                     PendingLightingUpdate lightUpdate = buildLightingUpdate(cx, cz, chunk);
@@ -368,7 +371,18 @@ public class Renderer {
                         pendingLightingUpdates.add(lightUpdate);
                     }
                 }
-            });
+            } else {
+                // Initial generation - async is fine
+                lightingPool.submit(() -> {
+                    Chunk chunk = world.getChunkIfLoaded(cx, cz);
+                    if (chunk != null) {
+                        PendingLightingUpdate lightUpdate = buildLightingUpdate(cx, cz, chunk);
+                        if (lightUpdate != null) {
+                            pendingLightingUpdates.add(lightUpdate);
+                        }
+                    }
+                });
+            }
             
             updates++;
         }
@@ -391,7 +405,8 @@ public class Renderer {
                 meshStates.put(key, MeshState.BUILDING);
                 final int fcx = cx, fcz = cz;
                 mesherPool.submit(() -> {
-                    PendingMesh built = buildChunkMesh(fcx, fcz, chunk);
+                    // Initial chunk generation - async lighting is fine
+                    PendingMesh built = buildChunkMesh(fcx, fcz, chunk, false);
                     pendingUpdates.add(built);
                     meshStates.put(built.key, MeshState.READY);
                 });
@@ -458,7 +473,8 @@ public class Renderer {
         Chunk chunk = world.getChunkIfLoaded(cx, cz);
         if (chunk == null) return;
         mesherPool.submit(() -> {
-            PendingMesh built = buildChunkMesh(cx, cz, chunk);
+            // Block change - compute lighting immediately to avoid flicker
+            PendingMesh built = buildChunkMesh(cx, cz, chunk, true);
             pendingUpdates.add(built);
             meshStates.put(built.key, MeshState.READY);
         });
@@ -541,7 +557,7 @@ public class Renderer {
         mesherPool.shutdownNow();
     }
 
-    private PendingMesh buildChunkMesh(int cx, int cz, Chunk chunk) {
+    private PendingMesh buildChunkMesh(int cx, int cz, Chunk chunk, boolean computeLightingImmediately) {
         // NOTE: Lighting is computed separately via buildLightingUpdate() - no need to rebuild here
         Map<Texture, FaceBatch> opaque = new HashMap<>(64);
         Map<Texture, FaceBatch> trans  = new HashMap<>(16);
@@ -602,7 +618,7 @@ public class Renderer {
         Map<Texture, float[]> perTrans = new HashMap<>(trans.size());
         for (Map.Entry<Texture, FaceBatch> e : trans.entrySet()) perTrans.put(e.getKey(), e.getValue().toArray());
 
-        return new PendingMesh(pack(cx, cz), cx, cz, perOpaque, perTrans);
+        return new PendingMesh(pack(cx, cz), cx, cz, perOpaque, perTrans, computeLightingImmediately);
     }
 
     private PendingLightingUpdate buildLightingUpdate(int cx, int cz, Chunk chunk) {
