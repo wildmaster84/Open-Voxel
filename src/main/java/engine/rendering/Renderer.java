@@ -72,13 +72,21 @@ public class Renderer {
         final Map<Texture, float[]> opaque;
         final Map<Texture, float[]> translucent;
         final boolean computeLightingImmediately; // true for block changes to avoid flicker
+        final Map<Texture, float[]> opaqueLighting; // Pre-computed lighting for immediate application
+        final Map<Texture, float[]> translucentLighting;
         PendingMesh(long key, int cx, int cz, Map<Texture, float[]> opaque, Map<Texture, float[]> translucent, boolean computeLightingImmediately) {
+            this(key, cx, cz, opaque, translucent, computeLightingImmediately, null, null);
+        }
+        PendingMesh(long key, int cx, int cz, Map<Texture, float[]> opaque, Map<Texture, float[]> translucent, boolean computeLightingImmediately,
+                    Map<Texture, float[]> opaqueLighting, Map<Texture, float[]> translucentLighting) {
             this.key = key;
             this.cx = cx;
             this.cz = cz;
             this.opaque = opaque;
             this.translucent = translucent;
             this.computeLightingImmediately = computeLightingImmediately;
+            this.opaqueLighting = opaqueLighting;
+            this.translucentLighting = translucentLighting;
         }
     }
 
@@ -360,19 +368,22 @@ public class Renderer {
             meshStates.put(pm.key, MeshState.GPU_LOADED);
             if (oldMesh != null) oldMesh.delete();
             
-            // Compute lighting for the new mesh
+            // Apply lighting for the new mesh
             final int cx = pm.cx, cz = pm.cz;
-            if (pm.computeLightingImmediately) {
-                // Block change - compute immediately to avoid flicker
-                Chunk chunk = world.getChunkIfLoaded(cx, cz);
-                if (chunk != null) {
-                    PendingLightingUpdate lightUpdate = buildLightingUpdate(cx, cz, chunk);
-                    if (lightUpdate != null) {
-                        pendingLightingUpdates.add(lightUpdate);
+            if (pm.opaqueLighting != null || pm.translucentLighting != null) {
+                // Pre-computed lighting available - apply immediately (no flicker!)
+                if (pm.opaqueLighting != null) {
+                    for (Map.Entry<Texture, float[]> e : pm.opaqueLighting.entrySet()) {
+                        mesh.updateLighting(e.getKey(), e.getValue(), true);
+                    }
+                }
+                if (pm.translucentLighting != null) {
+                    for (Map.Entry<Texture, float[]> e : pm.translucentLighting.entrySet()) {
+                        mesh.updateLighting(e.getKey(), e.getValue(), false);
                     }
                 }
             } else {
-                // Initial generation - async is fine
+                // No pre-computed lighting - schedule async computation
                 lightingPool.submit(() -> {
                     Chunk chunk = world.getChunkIfLoaded(cx, cz);
                     if (chunk != null) {
@@ -618,7 +629,18 @@ public class Renderer {
         Map<Texture, float[]> perTrans = new HashMap<>(trans.size());
         for (Map.Entry<Texture, FaceBatch> e : trans.entrySet()) perTrans.put(e.getKey(), e.getValue().toArray());
 
-        return new PendingMesh(pack(cx, cz), cx, cz, perOpaque, perTrans, computeLightingImmediately);
+        // If immediate lighting requested, compute it now (on mesher thread, not render thread)
+        Map<Texture, float[]> opaqueLighting = null;
+        Map<Texture, float[]> translucentLighting = null;
+        if (computeLightingImmediately) {
+            PendingLightingUpdate lightUpdate = buildLightingUpdate(cx, cz, chunk);
+            if (lightUpdate != null) {
+                opaqueLighting = lightUpdate.opaqueLighting;
+                translucentLighting = lightUpdate.translucentLighting;
+            }
+        }
+
+        return new PendingMesh(pack(cx, cz), cx, cz, perOpaque, perTrans, computeLightingImmediately, opaqueLighting, translucentLighting);
     }
 
     private PendingLightingUpdate buildLightingUpdate(int cx, int cz, Chunk chunk) {
