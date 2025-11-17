@@ -551,7 +551,7 @@ public class Renderer {
     }
 
     private PendingMesh buildChunkMesh(int cx, int cz, Chunk chunk) {
-    	VoxelEngine.getLightEngine().rebuildSkylightForChunk(world, cx, cz, chunk);
+        // NOTE: Lighting is computed separately via buildLightingUpdate() - no need to rebuild here
         Map<Texture, FaceBatch> opaque = new HashMap<>(64);
         Map<Texture, FaceBatch> trans  = new HashMap<>(16);
 
