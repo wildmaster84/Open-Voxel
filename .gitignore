@@ -5,3 +5,4 @@
 *.log
 dependency-reduced-pom.xml
 /world
+*.bak

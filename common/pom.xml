@@ -1,0 +1,18 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.openvoxel</groupId>
+        <artifactId>open-voxel-parent</artifactId>
+        <version>0.0.7-Debug</version>
+    </parent>
+
+    <artifactId>common</artifactId>
+    <name>Open-Voxel Common</name>
+    <description>Common networking and plugin API shared between client and server</description>
+
+</project>

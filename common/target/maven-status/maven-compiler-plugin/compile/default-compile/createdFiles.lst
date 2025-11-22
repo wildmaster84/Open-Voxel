@@ -1,0 +1,6 @@
+com/openvoxel/net/packet/Packet.class
+com/openvoxel/net/packet/PacketRegistry.class
+com/openvoxel/net/packet/ExampleHelloPacket.class
+com/openvoxel/net/Connection.class
+com/openvoxel/plugin/Plugin$PluginContext.class
+com/openvoxel/plugin/Plugin.class
