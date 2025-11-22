@@ -78,3 +78,4 @@ The networking system uses a packet registry with the following built-in packets
 - **PlayerMoveRequestPacket** (ID 10): Client requests movement
 - **PlayerMoveResultPacket** (ID 11): Server confirms or corrects movement
 
+All packets implement the `engine.net.packet.Packet` interface and are registered in the `PacketRegistry`.
