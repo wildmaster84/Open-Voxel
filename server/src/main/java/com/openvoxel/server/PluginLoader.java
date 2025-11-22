@@ -86,11 +86,14 @@ public class PluginLoader {
         
         // Load the plugin class
         URL[] urls = new URL[] { jarFile.toURI().toURL() };
+        // Note: We don't close the classloader here because it needs to remain open
+        // for the plugin classes to remain accessible during the server's lifetime
         URLClassLoader classLoader = new URLClassLoader(urls, getClass().getClassLoader());
         
         Class<?> pluginClass = classLoader.loadClass(pluginClassName.trim());
         if (!Plugin.class.isAssignableFrom(pluginClass)) {
             System.err.println("Plugin class does not implement Plugin interface: " + pluginClassName);
+            classLoader.close();
             return null;
         }
         

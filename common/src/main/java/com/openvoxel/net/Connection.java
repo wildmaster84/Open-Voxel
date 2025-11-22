@@ -37,7 +37,10 @@ public class Connection {
      * @param packetClass the packet class to handle
      * @param handler the handler to invoke when a packet of this type is received
      */
+    @SuppressWarnings("unchecked")
     public <T extends Packet> void registerHandler(Class<T> packetClass, Consumer<T> handler) {
+        // This cast is safe because we only invoke handlers for the exact packet type
+        // they are registered for (see readLoop method where handlers are invoked)
         handlers.put(packetClass, (Consumer<Packet>) handler);
     }
     

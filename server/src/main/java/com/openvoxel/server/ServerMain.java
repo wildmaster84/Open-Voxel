@@ -123,14 +123,21 @@ public class ServerMain {
      * Broadcast a packet to all connected clients.
      */
     public void broadcast(Packet packet) {
+        List<Connection> toRemove = new ArrayList<>();
         synchronized (connections) {
             for (Connection connection : connections) {
+                if (!connection.isConnected()) {
+                    toRemove.add(connection);
+                    continue;
+                }
                 try {
                     connection.sendPacket(packet);
                 } catch (IOException e) {
                     System.err.println("Error broadcasting packet: " + e.getMessage());
+                    toRemove.add(connection);
                 }
             }
+            connections.removeAll(toRemove);
         }
     }
     
@@ -146,11 +153,13 @@ public class ServerMain {
         running = false;
         
         // Close all connections
+        List<Connection> connectionsToClose;
         synchronized (connections) {
-            for (Connection connection : connections) {
-                connection.close();
-            }
+            connectionsToClose = new ArrayList<>(connections);
             connections.clear();
+        }
+        for (Connection connection : connectionsToClose) {
+            connection.close();
         }
         
         // Disable all plugins
