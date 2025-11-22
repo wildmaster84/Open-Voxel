@@ -58,7 +58,8 @@ public class RemoteWorldAdapter {
 			connection.sendPacket(request);
 			
 			// Wait for and receive the response
-			// Note: In a real implementation, this would be handled asynchronously
+			// TODO: This blocks the calling thread. In production, use asynchronous packet 
+			// handling with callbacks or CompletableFuture to prevent UI freezing
 			var response = connection.receivePacket();
 			if (response instanceof PlayerMoveResultPacket) {
 				return (PlayerMoveResultPacket) response;

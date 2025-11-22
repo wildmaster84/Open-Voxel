@@ -84,6 +84,8 @@ public class ServerIntegrationExample {
 	 * Handle a client connection.
 	 */
 	private void handleClient(Socket socket) {
+		// TODO: Use secure session-based authentication instead of IP address for player ID
+		// IP addresses can be spoofed and are not suitable for production use
 		String clientId = socket.getInetAddress().getHostAddress();
 		Connection connection = null;
 		

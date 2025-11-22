@@ -21,6 +21,7 @@ public class PluginLoader {
 	private static final String PLUGIN_CLASS_KEY = "plugin-class";
 	
 	private List<Plugin> loadedPlugins = new ArrayList<>();
+	private List<URLClassLoader> classLoaders = new ArrayList<>();
 	
 	/**
 	 * Load all plugins from the plugins/ directory.
@@ -99,17 +100,26 @@ public class PluginLoader {
 			getClass().getClassLoader()
 		);
 		
-		Class<?> pluginClass = classLoader.loadClass(pluginClassName);
-		if (!Plugin.class.isAssignableFrom(pluginClass)) {
-			System.err.println("Error: " + pluginClassName + " does not implement Plugin interface");
-			return null;
+		try {
+			Class<?> pluginClass = classLoader.loadClass(pluginClassName);
+			if (!Plugin.class.isAssignableFrom(pluginClass)) {
+				System.err.println("Error: " + pluginClassName + " does not implement Plugin interface");
+				classLoader.close();
+				return null;
+			}
+			
+			Plugin plugin = (Plugin) pluginClass.getDeclaredConstructor().newInstance();
+			// Store classloader for cleanup during unload
+			classLoaders.add(classLoader);
+			return plugin;
+		} catch (Exception e) {
+			classLoader.close();
+			throw e;
 		}
-		
-		return (Plugin) pluginClass.getDeclaredConstructor().newInstance();
 	}
 	
 	/**
-	 * Unload all loaded plugins.
+	 * Unload all loaded plugins and close their classloaders.
 	 */
 	public void unloadAll() {
 		for (Plugin plugin : loadedPlugins) {
@@ -121,6 +131,16 @@ public class PluginLoader {
 			}
 		}
 		loadedPlugins.clear();
+		
+		// Close all classloaders to free resources
+		for (URLClassLoader classLoader : classLoaders) {
+			try {
+				classLoader.close();
+			} catch (Exception e) {
+				System.err.println("Error closing plugin classloader: " + e.getMessage());
+			}
+		}
+		classLoaders.clear();
 	}
 	
 	/**
