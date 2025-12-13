@@ -1,7 +1,8 @@
-/target/
+target/
 .classpath
 .project
 /.settings
 *.log
 dependency-reduced-pom.xml
 /world
+*.bak

@@ -1,0 +1,93 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.openvoxel</groupId>
+        <artifactId>open-voxel-parent</artifactId>
+        <version>0.0.7-Debug</version>
+    </parent>
+
+    <artifactId>client</artifactId>
+    <name>Open-Voxel Client</name>
+    <description>Game client with networking capabilities</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.openvoxel</groupId>
+            <artifactId>common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+		    <groupId>org.lwjgl</groupId>
+		    <artifactId>lwjgl</artifactId>
+		    <version>${lwjgl.version}</version>
+		    <classifier>natives-windows</classifier>
+		</dependency>
+		<dependency>
+		    <groupId>org.lwjgl</groupId>
+		    <artifactId>lwjgl-glfw</artifactId>
+		    <version>${lwjgl.version}</version>
+		    <classifier>natives-windows</classifier>
+		</dependency>
+		<dependency>
+		    <groupId>org.lwjgl</groupId>
+		    <artifactId>lwjgl-opengl</artifactId>
+		    <version>${lwjgl.version}</version>
+		    <classifier>natives-windows</classifier>
+		</dependency>
+		<dependency>
+		    <groupId>org.lwjgl</groupId>
+		    <artifactId>lwjgl-stb</artifactId>
+		    <version>${lwjgl.version}</version>
+		    <classifier>natives-windows</classifier>
+		</dependency>
+        <!-- LWJGL core and modules -->
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl</artifactId>
+            <version>${lwjgl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-glfw</artifactId>
+            <version>${lwjgl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-opengl</artifactId>
+            <version>${lwjgl.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl-stb</artifactId>
+            <version>${lwjgl.version}</version>
+        </dependency>
+        <!-- JOML for math -->
+        <dependency>
+            <groupId>org.joml</groupId>
+            <artifactId>joml</artifactId>
+            <version>${joml.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>com.openvoxel.client.ClientMain</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
