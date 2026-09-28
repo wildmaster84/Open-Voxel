@@ -5,3 +5,10 @@
 *.log
 dependency-reduced-pom.xml
 /world
+/engine/src/main/resources/textures
+/engine/target
+/server/target
+/bin
+/client/target
+/client/target
+publish.ps1

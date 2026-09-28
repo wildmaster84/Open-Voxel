@@ -1,0 +1,83 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>io.openvoxel</groupId>
+        <artifactId>openvoxel-parent</artifactId>
+        <version>0.0.7-Debug</version>
+    </parent>
+
+    <!-- artifactId "client" keeps the launcher-facing jar name: client-0.0.7-Debug.jar -->
+    <artifactId>client</artifactId>
+    <name>Open-Voxel Client</name>
+    <description>Game client: main menu, server selector, singleplayer/multiplayer</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.openvoxel</groupId>
+            <artifactId>openvoxel-engine</artifactId>
+        </dependency>
+        <!-- Integrated (singleplayer) server: GameServer runs in-process on loopback -->
+        <dependency>
+            <groupId>io.openvoxel</groupId>
+            <artifactId>openvoxel-server</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Shaded in; declared so javac sees LWJGL transitively -->
+        <dependency>
+            <groupId>org.lwjgl</groupId>
+            <artifactId>lwjgl</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.joml</groupId>
+            <artifactId>joml</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <mainClass>game.ClientMain</mainClass>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>game.ClientMain</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
